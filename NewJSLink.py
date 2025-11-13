@@ -15,8 +15,9 @@ import re
 import cgi
 from os import path
 from javax import swing
-from java.awt import Font, Color
-from threading import Thread
+from java.awt import Font, Color, BorderLayout
+from java.awt.event import MouseAdapter
+from threading import Thread, Lock
 #from array import array
 from jarray import array
 from java.awt import EventQueue
@@ -138,7 +139,7 @@ class BurpExtender(IBurpExtender, IScannerCheck, ITab, IContextMenuFactory):
         def changedUpdate(self, e):
             pass
 
-    class TableMouseListener(java.awt.event.MouseAdapter):
+    class TableMouseListener(MouseAdapter):
         def __init__(self, extender):
             self.extender = extender
 
@@ -148,8 +149,9 @@ class BurpExtender(IBurpExtender, IScannerCheck, ITab, IContextMenuFactory):
 
             if col == 1:
                 url = self.extender.tableModel.getValueAt(row, 0)
-                data = self.extender._data[url]
-                new_endpoints = [e for e in data["current_endpoints"] if e.get("status") == "new"]
+                with self.extender.lock:
+                    data = self.extender._data[url]
+                    new_endpoints = [e for e in data["current_endpoints"] if e.get("status") == "new"]
 
                 if new_endpoints:
                     self.extender.toggle_details_card(row, url, new_endpoints)
@@ -164,7 +166,7 @@ class BurpExtender(IBurpExtender, IScannerCheck, ITab, IContextMenuFactory):
         self.details_card_panel.setBorder(swing.BorderFactory.createLineBorder(Color(16, 185, 129), 3))
 
         # Header
-        header_panel = JPanel(java.awt.BorderLayout())
+        header_panel = JPanel(BorderLayout())
         header_label = JLabel(" New Endpoints Found (" + str(len(new_endpoints)) + ")")
         header_label.setFont(Font("Tahoma", Font.BOLD, 14))
 
@@ -175,8 +177,8 @@ class BurpExtender(IBurpExtender, IScannerCheck, ITab, IContextMenuFactory):
 
         subtitle_label = JLabel(subtitle_text)
         subtitle_label.setForeground(Color.GRAY)
-        header_panel.add(header_label, java.awt.BorderLayout.NORTH)
-        header_panel.add(subtitle_label, java.awt.BorderLayout.SOUTH)
+        header_panel.add(header_label, BorderLayout.NORTH)
+        header_panel.add(subtitle_label, BorderLayout.SOUTH)
 
         # Body
         body_panel = JPanel()
@@ -193,9 +195,9 @@ class BurpExtender(IBurpExtender, IScannerCheck, ITab, IContextMenuFactory):
             new_tag.setBackground(Color(16, 185, 129))
             new_tag.setOpaque(True)
 
-            endpoint_panel = JPanel(java.awt.BorderLayout())
-            endpoint_panel.add(checkbox, java.awt.BorderLayout.CENTER)
-            endpoint_panel.add(new_tag, java.awt.BorderLayout.EAST)
+            endpoint_panel = JPanel(BorderLayout())
+            endpoint_panel.add(checkbox, BorderLayout.CENTER)
+            endpoint_panel.add(new_tag, BorderLayout.EAST)
 
             endpoint_checkboxes.append(checkbox)
             body_panel.add(endpoint_panel)
@@ -222,9 +224,9 @@ class BurpExtender(IBurpExtender, IScannerCheck, ITab, IContextMenuFactory):
         footer_panel.add(mark_reviewed_btn)
 
         # Layout
-        self.details_card_panel.add(header_panel, java.awt.BorderLayout.NORTH)
-        self.details_card_panel.add(body_panel, java.awt.BorderLayout.CENTER)
-        self.details_card_panel.add(footer_panel, java.awt.BorderLayout.SOUTH)
+        self.details_card_panel.add(header_panel, BorderLayout.NORTH)
+        self.details_card_panel.add(body_panel, BorderLayout.CENTER)
+        self.details_card_panel.add(footer_panel, BorderLayout.SOUTH)
 
         # Animation
         self.details_card_panel.setPreferredSize(java.awt.Dimension(0, 0))
@@ -241,28 +243,28 @@ class BurpExtender(IBurpExtender, IScannerCheck, ITab, IContextMenuFactory):
         Timer(10, on_tick).start()
 
     def mark_as_reviewed(self, url, new_endpoints):
-        js_data = self._data[url]
-        for endpoint in new_endpoints:
-            for current_endpoint in js_data["current_endpoints"]:
-                if current_endpoint["endpoint"] == endpoint["endpoint"]:
-                    current_endpoint["status"] = "active"
-
-        self.save_data_to_storage()
-        self.update_table()
+        with self.lock:
+            js_data = self._data[url]
+            for endpoint in new_endpoints:
+                for current_endpoint in js_data["current_endpoints"]:
+                    if current_endpoint["endpoint"] == endpoint["endpoint"]:
+                        current_endpoint["status"] = "active"
+            self.save_data_to_storage()
+        SwingUtilities.invokeLater(self.update_table)
 
     def move_to_historic(self, url, new_endpoints):
-        js_data = self._data[url]
-        now = datetime.now().isoformat()
-        for endpoint in new_endpoints:
-            for i, current_endpoint in enumerate(js_data["current_endpoints"]):
-                if current_endpoint["endpoint"] == endpoint["endpoint"]:
-                    historic_endpoint = js_data["current_endpoints"].pop(i)
-                    historic_endpoint["moved_to_historic"] = now
-                    historic_endpoint["reason"] = "user_archived"
-                    js_data["historic_endpoints"].append(historic_endpoint)
-
-        self.save_data_to_storage()
-        self.update_table()
+        with self.lock:
+            js_data = self._data[url]
+            now = datetime.now().isoformat()
+            for endpoint in new_endpoints:
+                for i, current_endpoint in enumerate(js_data["current_endpoints"]):
+                    if current_endpoint["endpoint"] == endpoint["endpoint"]:
+                        historic_endpoint = js_data["current_endpoints"].pop(i)
+                        historic_endpoint["moved_to_historic"] = now
+                        historic_endpoint["reason"] = "user_archived"
+                        js_data["historic_endpoints"].append(historic_endpoint)
+            self.save_data_to_storage()
+        SwingUtilities.invokeLater(self.update_table)
 
     def registerExtenderCallbacks(self, callbacks):
         self.callbacks = callbacks
@@ -272,6 +274,7 @@ class BurpExtender(IBurpExtender, IScannerCheck, ITab, IContextMenuFactory):
         #stdout = PrintWriter(callbacks.getStdout(), True)
         #stderr = PrintWriter(callbacks.getStderr(), True)
         callbacks.registerScannerCheck(self)
+        self.lock = Lock()
         self.threads = []
         self._data = {}
         self._blacklist = {}
@@ -355,14 +358,14 @@ class BurpExtender(IBurpExtender, IScannerCheck, ITab, IContextMenuFactory):
         self.showHistoricCheckbox.addActionListener(lambda e: self.update_table())
 
         # Main panel
-        main_panel = JPanel(java.awt.BorderLayout())
-        main_panel.add(self.showHistoricCheckbox, java.awt.BorderLayout.NORTH)
-        main_panel.add(self.scrollPane, java.awt.BorderLayout.CENTER)
+        main_panel = JPanel(BorderLayout())
+        main_panel.add(self.showHistoricCheckbox, BorderLayout.NORTH)
+        main_panel.add(self.scrollPane, BorderLayout.CENTER)
 
         # Details card panel (initially hidden)
-        self.details_card_panel = JPanel(java.awt.BorderLayout())
+        self.details_card_panel = JPanel(BorderLayout())
         self.details_card_panel.setVisible(False)
-        main_panel.add(self.details_card_panel, java.awt.BorderLayout.SOUTH)
+        main_panel.add(self.details_card_panel, BorderLayout.SOUTH)
 
         #Set up all the panes
         self._splitpane.setLeftComponent(self.logPanel)
@@ -450,29 +453,33 @@ class BurpExtender(IBurpExtender, IScannerCheck, ITab, IContextMenuFactory):
 
 
     def load_data_from_storage(self):
-        stored_data = self.callbacks.loadExtensionSetting("NewJSLink_data")
-        if stored_data:
-            self._data = json.loads(stored_data)
+        with self.lock:
+            stored_data = self.callbacks.loadExtensionSetting("NewJSLink_data")
+            if stored_data:
+                self._data = json.loads(stored_data)
 
     def save_data_to_storage(self):
-        self.callbacks.saveExtensionSetting("NewJSLink_data", json.dumps(self._data))
+        with self.lock:
+            self.callbacks.saveExtensionSetting("NewJSLink_data", json.dumps(self._data))
 
     def load_blacklist(self):
-        stored_blacklist = self.callbacks.loadExtensionSetting("NewJSLink_blacklist")
-        if stored_blacklist:
-            self._blacklist = json.loads(stored_blacklist)
-        else:
-            # Default blacklist
-            self._blacklist = {
-                "exact_urls": [],
-                "patterns": ["/google-analytics/", "/tracking*.js"],
-                "domains": ["cdn.jsdelivr.net", "cdnjs.cloudflare.com"],
-                "max_file_size_kb": 1000,
-                "auto_categories": ["analytics", "advertising"]
-            }
+        with self.lock:
+            stored_blacklist = self.callbacks.loadExtensionSetting("NewJSLink_blacklist")
+            if stored_blacklist:
+                self._blacklist = json.loads(stored_blacklist)
+            else:
+                # Default blacklist
+                self._blacklist = {
+                    "exact_urls": [],
+                    "patterns": ["/google-analytics/", "/tracking*.js"],
+                    "domains": ["cdn.jsdelivr.net", "cdnjs.cloudflare.com"],
+                    "max_file_size_kb": 1000,
+                    "auto_categories": ["analytics", "advertising"]
+                }
 
     def save_blacklist(self):
-        self.callbacks.saveExtensionSetting("NewJSLink_blacklist", json.dumps(self._blacklist))
+        with self.lock:
+            self.callbacks.saveExtensionSetting("NewJSLink_blacklist", json.dumps(self._blacklist))
 
     def getTabCaption(self):
         return "NewJSLink"
@@ -480,13 +487,14 @@ class BurpExtender(IBurpExtender, IScannerCheck, ITab, IContextMenuFactory):
         return self._parentPane
 
     def load_blacklist_ui(self):
-        table_data = []
-        for url in self._blacklist.get("exact_urls", []):
-            table_data.append([url, "Exact URL", "Remove"])
-        for pattern in self._blacklist.get("patterns", []):
-            table_data.append([pattern, "Pattern", "Remove"])
-        for domain in self._blacklist.get("domains", []):
-            table_data.append([domain, "Domain", "Remove"])
+        with self.lock:
+            table_data = []
+            for url in self._blacklist.get("exact_urls", []):
+                table_data.append([url, "Exact URL", "Remove"])
+            for pattern in self._blacklist.get("patterns", []):
+                table_data.append([pattern, "Pattern", "Remove"])
+            for domain in self._blacklist.get("domains", []):
+                table_data.append([domain, "Domain", "Remove"])
 
         self.blacklistTableModel.setData(table_data)
         self.analyticsCheckbox.setSelected("analytics" in self._blacklist.get("auto_categories", []))
@@ -499,19 +507,20 @@ class BurpExtender(IBurpExtender, IScannerCheck, ITab, IContextMenuFactory):
 
 
     def save_blacklist_categories(self, event):
-        if self.analyticsCheckbox.isSelected():
-            if "analytics" not in self._blacklist.get("auto_categories", []):
-                self._blacklist.get("auto_categories", []).append("analytics")
-        else:
-            if "analytics" in self._blacklist.get("auto_categories", []):
-                self._blacklist.get("auto_categories", []).remove("analytics")
+        with self.lock:
+            if self.analyticsCheckbox.isSelected():
+                if "analytics" not in self._blacklist.get("auto_categories", []):
+                    self._blacklist.get("auto_categories", []).append("analytics")
+            else:
+                if "analytics" in self._blacklist.get("auto_categories", []):
+                    self._blacklist.get("auto_categories", []).remove("analytics")
 
-        if self.advertisingCheckbox.isSelected():
-            if "advertising" not in self._blacklist.get("auto_categories", []):
-                self._blacklist.get("auto_categories", []).append("advertising")
-        else:
-            if "advertising" in self._blacklist.get("auto_categories", []):
-                self._blacklist.get("auto_categories", []).remove("advertising")
+            if self.advertisingCheckbox.isSelected():
+                if "advertising" not in self._blacklist.get("auto_categories", []):
+                    self._blacklist.get("auto_categories", []).append("advertising")
+            else:
+                if "advertising" in self._blacklist.get("auto_categories", []):
+                    self._blacklist.get("auto_categories", []).remove("advertising")
 
         self.save_blacklist()
 
@@ -520,15 +529,16 @@ class BurpExtender(IBurpExtender, IScannerCheck, ITab, IContextMenuFactory):
         rule_type = swing.JOptionPane.showInputDialog(self.blacklistPanel, "Enter type (Exact URL, Pattern, Domain):")
 
         if rule and rule_type:
-            if rule_type == "Exact URL":
-                self._blacklist.get("exact_urls", []).append(rule)
-            elif rule_type == "Pattern":
-                self._blacklist.get("patterns", []).append(rule)
-            elif rule_type == "Domain":
-                self._blacklist.get("domains", []).append(rule)
+            with self.lock:
+                if rule_type == "Exact URL":
+                    self._blacklist.get("exact_urls", []).append(rule)
+                elif rule_type == "Pattern":
+                    self._blacklist.get("patterns", []).append(rule)
+                elif rule_type == "Domain":
+                    self._blacklist.get("domains", []).append(rule)
 
-        self.save_blacklist()
-        self.load_blacklist_ui()
+            self.save_blacklist()
+            self.load_blacklist_ui()
 
     def remove_blacklist_rule(self, event):
         row = self.blacklistTable.getSelectedRow()
@@ -536,15 +546,16 @@ class BurpExtender(IBurpExtender, IScannerCheck, ITab, IContextMenuFactory):
             rule = self.blacklistTableModel.getValueAt(row, 0)
             rule_type = self.blacklistTableModel.getValueAt(row, 1)
 
-            if rule_type == "Exact URL":
-                self._blacklist.get("exact_urls", []).remove(rule)
-            elif rule_type == "Pattern":
-                self._blacklist.get("patterns", []).remove(rule)
-            elif rule_type == "Domain":
-                self._blacklist.get("domains", []).remove(rule)
+            with self.lock:
+                if rule_type == "Exact URL":
+                    self._blacklist.get("exact_urls", []).remove(rule)
+                elif rule_type == "Pattern":
+                    self._blacklist.get("patterns", []).remove(rule)
+                elif rule_type == "Domain":
+                    self._blacklist.get("domains", []).remove(rule)
 
-        self.save_blacklist()
-        self.load_blacklist_ui()
+            self.save_blacklist()
+            self.load_blacklist_ui()
 
     def update_stats(self):
         self.scannedFilesLabel.setText("Scanned files: " + str(self.scanned_files_count))
@@ -555,7 +566,8 @@ class BurpExtender(IBurpExtender, IScannerCheck, ITab, IContextMenuFactory):
         ret = chooseFile.showDialog(self.blacklistPanel, "Choose file")
         filename = chooseFile.getSelectedFile().getCanonicalPath()
         with open(filename, 'r') as f:
-            self._blacklist = json.load(f)
+            with self.lock:
+                self._blacklist = json.load(f)
         self.save_blacklist()
         self.load_blacklist_ui()
 
@@ -564,19 +576,21 @@ class BurpExtender(IBurpExtender, IScannerCheck, ITab, IContextMenuFactory):
         ret = chooseFile.showDialog(self.blacklistPanel, "Choose file")
         filename = chooseFile.getSelectedFile().getCanonicalPath()
         with open(filename, 'w') as f:
-            json.dump(self._blacklist, f)
+            with self.lock:
+                json.dump(self._blacklist, f)
 
     def update_table(self):
-        table_data = []
-        show_historic = self.showHistoricCheckbox.isSelected()
+        with self.lock:
+            table_data = []
+            show_historic = self.showHistoricCheckbox.isSelected()
 
-        for url, data in self._data.items():
-            new_endpoints_count = len([e for e in data["current_endpoints"] if e.get("status") == "new"])
-            table_data.append([url, new_endpoints_count, "Active"])
+            for url, data in self._data.items():
+                new_endpoints_count = len([e for e in data["current_endpoints"] if e.get("status") == "new"])
+                table_data.append([url, new_endpoints_count, "Active"])
 
-            if show_historic:
-                for endpoint in data["historic_endpoints"]:
-                    table_data.append([endpoint["endpoint"], 0, "Historic"])
+                if show_historic:
+                    for endpoint in data["historic_endpoints"]:
+                        table_data.append([endpoint["endpoint"], 0, "Historic"])
 
         self.tableModel.setData(table_data)
 
@@ -606,10 +620,11 @@ class BurpExtender(IBurpExtender, IScannerCheck, ITab, IContextMenuFactory):
 
     def add_to_blacklist(self, event):
         messages = self.context.getSelectedMessages()
-        for messageInfo in messages:
-            url = str(messageInfo.getUrl())
-            if url not in self._blacklist["exact_urls"]:
-                self._blacklist["exact_urls"].append(url)
+        with self.lock:
+            for messageInfo in messages:
+                url = str(messageInfo.getUrl())
+                if url not in self._blacklist["exact_urls"]:
+                    self._blacklist["exact_urls"].append(url)
         self.save_blacklist()
         self.load_blacklist_ui()
 
@@ -617,21 +632,21 @@ class BurpExtender(IBurpExtender, IScannerCheck, ITab, IContextMenuFactory):
         endpoint_to_restore = self.tableModel.getValueAt(row, 0)
 
         # Find the historic endpoint and move it back to current
-        for url, data in self._data.items():
-            for i, historic_endpoint in enumerate(data["historic_endpoints"]):
-                if historic_endpoint["endpoint"] == endpoint_to_restore:
-                    restored_endpoint = data["historic_endpoints"].pop(i)
-                    restored_endpoint["status"] = "active"
-                    del restored_endpoint["moved_to_historic"]
-                    del restored_endpoint["reason"]
-                    data["current_endpoints"].append(restored_endpoint)
-                    break
-
-        self.save_data_to_storage()
-        self.update_table()
+        with self.lock:
+            for url, data in self._data.items():
+                for i, historic_endpoint in enumerate(data["historic_endpoints"]):
+                    if historic_endpoint["endpoint"] == endpoint_to_restore:
+                        restored_endpoint = data["historic_endpoints"].pop(i)
+                        restored_endpoint["status"] = "active"
+                        del restored_endpoint["moved_to_historic"]
+                        del restored_endpoint["reason"]
+                        data["current_endpoints"].append(restored_endpoint)
+                        break
+            self.save_data_to_storage()
+        SwingUtilities.invokeLater(self.update_table)
 
     def clearLog(self, event):
-          self.outputTxtArea.setText("BurpJS LinkFinder loaded." + "\n" + "Copyright (c) 2022 Frans Hendrik Botes" + "\n" )
+        self.outputTxtArea.setText("BurpJS LinkFinder loaded." + "\n" + "Copyright (c) 2022 Frans Hendrik Botes" + "\n" )
     def exportLog(self, event):
         chooseFile = JFileChooser()
         ret = chooseFile.showDialog(self.logPane, "Choose file")
@@ -639,30 +654,31 @@ class BurpExtender(IBurpExtender, IScannerCheck, ITab, IContextMenuFactory):
         self.callbacks.printOutput("\n" + "Export to : " + filename)
         open(filename, 'w', 0).write(self.outputTxtArea.text)
     def is_blacklisted(self, url_str, response_length):
-        # Check exact URLs
-        if url_str in self._blacklist.get("exact_urls", []):
-            return True
-
-        # Check patterns
-        for pattern in self._blacklist.get("patterns", []):
-            if re.search(pattern, url_str):
+        with self.lock:
+            # Check exact URLs
+            if url_str in self._blacklist.get("exact_urls", []):
                 return True
 
-        # Check domains
-        domain = urlparse.urlparse(url_str).hostname
-        if domain in self._blacklist.get("domains", []):
-            return True
+            # Check patterns
+            for pattern in self._blacklist.get("patterns", []):
+                if re.search(pattern, url_str):
+                    return True
 
-        # Check file size
-        max_size_kb = self._blacklist.get("max_file_size_kb", 1000)
-        if (response_length / 1024) > max_size_kb:
-            return True
+            # Check domains
+            domain = urlparse.urlparse(url_str).hostname
+            if domain in self._blacklist.get("domains", []):
+                return True
 
-        # Check categories
-        if "analytics" in self._blacklist.get("auto_categories", []) and any(x in url_str for x in ['google-analytics', 'mixpanel']):
-            return True
-        if "advertising" in self._blacklist.get("auto_categories", []) and any(x in url_str for x in ['ads', 'pixel']):
-            return True
+            # Check file size
+            max_size_kb = self._blacklist.get("max_file_size_kb", 1000)
+            if (response_length / 1024) > max_size_kb:
+                return True
+
+            # Check categories
+            if "analytics" in self._blacklist.get("auto_categories", []) and any(x in url_str for x in ['google-analytics', 'mixpanel']):
+                return True
+            if "advertising" in self._blacklist.get("auto_categories", []) and any(x in url_str for x in ['ads', 'pixel']):
+                return True
 
         return False
 
@@ -671,37 +687,38 @@ class BurpExtender(IBurpExtender, IScannerCheck, ITab, IContextMenuFactory):
             urlReq = ihrr.getUrl()
             urlStr = str(urlReq)
 
-            # check if JS file
             if ".js" in urlStr:
                 if self.scopeCheckbox.isSelected() and not self.callbacks.isInScope(urlReq):
                     return None
 
                 self.scanned_files_count += 1
-                # Blacklist check
                 if self.is_blacklisted(urlStr, len(ihrr.getResponse())):
                     self.blacklisted_files_count += 1
                     self.callbacks.printOutput("\n" + "[-] URL blacklisted " + urlStr)
-                    self.update_stats()
+                    SwingUtilities.invokeLater(self.update_stats)
                     return None
 
                 self.outputTxtArea.append("\n" + "[+] Valid URL found: " + urlStr)
 
-                    # Get previous data
-                    js_data = self._data.get(urlStr, {
-                        "current_endpoints": [],
-                        "historic_endpoints": []
-                    })
+                with self.lock:
+                    if urlStr not in self._data:
+                        self._data[urlStr] = {
+                            "current_endpoints": [],
+                            "historic_endpoints": []
+                        }
+                    js_data = self._data[urlStr]
+
                     previous_endpoints = [e["endpoint"] for e in js_data["current_endpoints"]]
                     historic_endpoints = [e["endpoint"] for e in js_data["historic_endpoints"]]
 
-                    # Analyse the JS file
-                    linkA = linkAnalyse(ihrr, self.callbacks, self.helpers)
-                    endpoints = linkA.analyseURL()
+                linkA = linkAnalyse(ihrr, self.callbacks, self.helpers)
+                endpoints = linkA.analyseURL()
 
-                    new_endpoints = []
-                    full_urls = []
-                    highlights = []
+                new_endpoints = []
+                full_urls = []
+                highlights = []
 
+                if endpoints:
                     for endpoint in endpoints:
                         full_url = endpoint['link']
                         if not linkA.valcheckFullURL(full_url):
@@ -717,31 +734,30 @@ class BurpExtender(IBurpExtender, IScannerCheck, ITab, IContextMenuFactory):
                         if lh not in highlights:
                             highlights.append(lh)
 
-                    # Update data
-                    now = datetime.now().isoformat()
-                    for endpoint in full_urls:
-                        if not any(e['endpoint'] == endpoint for e in js_data['current_endpoints']):
-                             js_data['current_endpoints'].append({
-                                "endpoint": endpoint,
-                                "first_seen": now,
-                                "status": "new"
-                            })
+                    with self.lock:
+                        now = datetime.now().isoformat()
+                        for endpoint in full_urls:
+                            if not any(e['endpoint'] == endpoint for e in js_data['current_endpoints']):
+                                js_data['current_endpoints'].append({
+                                    "endpoint": endpoint,
+                                    "first_seen": now,
+                                    "status": "new"
+                                })
 
-                    self._data[urlStr] = js_data
-                    self.save_data_to_storage()
+                        self._data[urlStr] = js_data
+                        self.save_data_to_storage()
 
-                    # Update table
-                    self.update_table()
+                    SwingUtilities.invokeLater(self.update_table)
 
-                    # Create issue
                     if full_urls:
                         issues = ArrayList()
                         issues.add(SRI(ihrr, self.helpers, self.callbacks, [e['link'] for e in endpoints], full_urls, highlights))
                         return issues
-
         except UnicodeEncodeError:
             self.callbacks.printOutput("Error in URL decode.")
+
         return None
+
     def consolidateDuplicateIssues(self, isb, isa):
         return -1
     def extensionUnloaded(self):
