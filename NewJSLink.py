@@ -742,8 +742,10 @@ class BurpExtender(IBurpExtender, IScannerCheck, ITab, IContextMenuFactory):
         try:
             urlReq = ihrr.getUrl()
             urlStr = str(urlReq)
+            self.callbacks.printOutput("doPassiveScan called for URL: " + urlStr)
 
             if ".js" in urlStr:
+                self.callbacks.printOutput("JS file detected: " + urlStr)
                 if self.scopeCheckbox.isSelected() and not self.callbacks.isInScope(urlReq):
                     return None
 
@@ -803,6 +805,8 @@ class BurpExtender(IBurpExtender, IScannerCheck, ITab, IContextMenuFactory):
                         self._data[urlStr] = js_data
                         self.save_data_to_storage()
 
+                    self.callbacks.printOutput("Found {} endpoints in {}".format(len(full_urls), urlStr))
+                    self.callbacks.printOutput("Adding row to table: " + urlStr)
                     SwingUtilities.invokeLater(self.update_table)
 
                     if full_urls:
