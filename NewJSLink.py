@@ -45,6 +45,9 @@ except ImportError:
     import Queue as queue
 
 from javax.swing.table import DefaultTableCellRenderer
+from ScanIssue import ScanIssue
+from burp.api.montoya.scanner.audit.issues import AuditIssueSeverity
+from burp.api.montoya.scanner.audit.issues import AuditIssueConfidence
 
 class BadgeRenderer(DefaultTableCellRenderer):
     def __init__(self):
@@ -196,10 +199,13 @@ class Run(Runnable):
     def run(self):
         self.runner()
 
+from burp.api.montoya.BurpExtension import BurpExtension
+from burp.api.montoya.extension.ExtensionUnloadingHandler import ExtensionUnloadingHandler
+
 # Needed params
 JSExclusionList = ['jquery', 'google-analytics','gpt.js','modernizr','gtm','fbevents']
 
-class BurpExtender(IBurpExtender, IScannerCheck, ITab, IContextMenuFactory):
+class BurpExtender(BurpExtension, ExtensionUnloadingHandler):
 
     class MaxSizeListener(DocumentListener):
         def __init__(self, extender):
@@ -351,14 +357,11 @@ class BurpExtender(IBurpExtender, IScannerCheck, ITab, IContextMenuFactory):
             self.save_data_to_storage()
         SwingUtilities.invokeLater(self.update_table)
 
-    def registerExtenderCallbacks(self, callbacks):
-        self.callbacks = callbacks
-        self.helpers = callbacks.getHelpers()
-        callbacks.setExtensionName("NewJSLink")
-        callbacks.issueAlert("NewJSLink Passive Scanner enabled")
-        #stdout = PrintWriter(callbacks.getStdout(), True)
-        #stderr = PrintWriter(callbacks.getStderr(), True)
-        callbacks.registerScannerCheck(self)
+    def initialize(self, api):
+        self.api = api
+        api.extension().setName("NewJSLink")
+        api.logging().logToOutput("NewJSLink Passive Scanner enabled")
+
         self.lock = Lock()
         self.threads = []
         self._data = {}
@@ -367,15 +370,125 @@ class BurpExtender(IBurpExtender, IScannerCheck, ITab, IContextMenuFactory):
         self.blacklisted_files_count = 0
         self.load_data_from_storage()
         self.load_blacklist()
-        callbacks.registerContextMenuFactory(self)
-        self.initUI()
-        # customize our UI components
-        callbacks.customizeUiComponent(self._parentPane)
-        # add the custom tab to Burp's UI
-        callbacks.addSuiteTab(self)
 
-        callbacks.printOutput("BurpJS LinkFinder v2 loaded.")
-        callbacks.printOutput("Copyright (c) 2022 Frans Hendrik Botes")
+        self.initUI()
+
+        api.userInterface().registerSuiteTab("NewJSLink", self._parentPane)
+        api.userInterface().registerContextMenuItemsProvider(self.MyContextMenuItemsProvider(self))
+
+        api.proxy().registerResponseHandler(self.ProxyResponseHandler(self))
+
+        api.logging().logToOutput("BurpJS LinkFinder v2 loaded.")
+        api.logging().logToOutput("Copyright (c) 2022 Frans Hendrik Botes")
+
+    def add_to_blacklist(self, url):
+        with self.lock:
+            if url not in self._blacklist["exact_urls"]:
+                self._blacklist["exact_urls"].append(url)
+        self.save_blacklist()
+        self.load_blacklist_ui()
+
+    class ProxyResponseHandler():
+        def __init__(self, extender):
+            self.extender = extender
+
+        def handleResponseReceived(self, ihrr):
+            try:
+                urlReq = ihrr.request().url()
+                urlStr = str(urlReq)
+                self.extender.api.logging().logToOutput("ProxyResponseHandler called for URL: " + urlStr)
+
+                is_js_by_extension = ".js" in urlStr
+
+                content_type = ""
+                for header in ihrr.response().headers():
+                    if header.name().lower() == "content-type":
+                        content_type = header.value().lower()
+                        break
+
+                js_content_types = ["application/javascript", "text/javascript", "application/x-javascript"]
+                is_js_by_content_type = any(ct in content_type for ct in js_content_types)
+
+                if is_js_by_extension or is_js_by_content_type:
+                    self.extender.api.logging().logToOutput("JS file detected: " + urlStr)
+                    if self.extender.scopeCheckbox.isSelected() and not self.extender.api.scope().isInScope(urlReq):
+                        return
+
+                    self.extender.scanned_files_count += 1
+                    if self.extender.is_blacklisted(urlStr, ihrr.response().bodyToString().length()):
+                        self.extender.blacklisted_files_count += 1
+                        self.extender.api.logging().logToOutput("\n" + "[-] URL blacklisted " + urlStr)
+                        SwingUtilities.invokeLater(self.extender.update_stats)
+                        return
+
+                    self.extender.api.logging().logToOutput("\n" + "[+] Valid URL found: " + urlStr)
+
+                    with self.extender.lock:
+                        if urlStr not in self.extender._data:
+                            self.extender._data[urlStr] = {
+                                "current_endpoints": [],
+                                "historic_endpoints": []
+                            }
+                        js_data = self.extender._data[urlStr]
+
+                        previous_endpoints = [e["endpoint"] for e in js_data["current_endpoints"]]
+                        historic_endpoints = [e["endpoint"] for e in js_data["historic_endpoints"]]
+
+                    linkA = linkAnalyse(ihrr, self.extender.api)
+                    endpoints = linkA.analyseURL()
+
+                    new_endpoints = []
+                    full_urls = []
+                    highlights = []
+
+                    if endpoints:
+                        for endpoint in endpoints:
+                            full_url = endpoint['link']
+                            if not linkA.valcheckFullURL(full_url):
+                                full_url = urlparse.urljoin(urlparse.urljoin(urlStr, '/'), full_url)
+
+                            if full_url not in full_urls:
+                                full_urls.append(full_url)
+
+                            if full_url not in previous_endpoints and full_url not in historic_endpoints:
+                                new_endpoints.append(full_url)
+
+                            lh = [endpoint['start'], endpoint['end']]
+                            if lh not in highlights:
+                                highlights.append(lh)
+
+                        with self.extender.lock:
+                            now = datetime.now().isoformat()
+                            for endpoint in full_urls:
+                                if not any(e['endpoint'] == endpoint for e in js_data['current_endpoints']):
+                                    js_data['current_endpoints'].append({
+                                        "endpoint": endpoint,
+                                        "first_seen": now,
+                                        "status": "new"
+                                    })
+
+                            self.extender._data[urlStr] = js_data
+                            self.extender.save_data_to_storage()
+
+                        # Report new endpoints as scanner issues
+                        for endpoint in new_endpoints:
+                            issue = ScanIssue.create_issue(
+                                name="Endpoint Discovered in JS File",
+                                detail="A new endpoint was discovered: <b>{}</b>".format(endpoint),
+                                remediation="Review the endpoint to determine if it exposes any sensitive functionality or data.",
+                                url=urlReq,
+                                severity=AuditIssueSeverity.INFORMATION,
+                                confidence=AuditIssueConfidence.FIRM,
+                                request_response=ihrr
+                            )
+                            self.extender.api.scanner().addScanIssue(issue)
+
+                        self.extender.api.logging().logToOutput("Found {} endpoints in {}".format(len(full_urls), urlStr))
+                        self.extender.api.logging().logToOutput("Adding row to table: " + urlStr)
+                        SwingUtilities.invokeLater(self.extender.update_table)
+
+            except Exception as e:
+                self.extender.api.logging().logToError(str(e))
 
     def initUI(self):
         self._parentPane = JTabbedPane()
@@ -501,17 +614,17 @@ class BurpExtender(IBurpExtender, IScannerCheck, ITab, IContextMenuFactory):
 
     def load_data_from_storage(self):
         with self.lock:
-            stored_data = self.callbacks.loadExtensionSetting("NewJSLink_data")
+            stored_data = self.api.persistence().preferences().getString("NewJSLink_data")
             if stored_data:
                 self._data = json.loads(stored_data)
 
     def save_data_to_storage(self):
         with self.lock:
-            self.callbacks.saveExtensionSetting("NewJSLink_data", json.dumps(self._data))
+            self.api.persistence().preferences().setString("NewJSLink_data", json.dumps(self._data))
 
     def load_blacklist(self):
         with self.lock:
-            stored_blacklist = self.callbacks.loadExtensionSetting("NewJSLink_blacklist")
+            stored_blacklist = self.api.persistence().preferences().getString("NewJSLink_blacklist")
             if stored_blacklist:
                 self._blacklist = json.loads(stored_blacklist)
             else:
@@ -526,12 +639,7 @@ class BurpExtender(IBurpExtender, IScannerCheck, ITab, IContextMenuFactory):
 
     def save_blacklist(self):
         with self.lock:
-            self.callbacks.saveExtensionSetting("NewJSLink_blacklist", json.dumps(self._blacklist))
-
-    def getTabCaption(self):
-        return "NewJSLink"
-    def getUiComponent(self):
-        return self._parentPane
+            self.api.persistence().preferences().setString("NewJSLink_blacklist", json.dumps(self._blacklist))
 
     def load_blacklist_ui(self):
         with self.lock:
@@ -642,56 +750,6 @@ class BurpExtender(IBurpExtender, IScannerCheck, ITab, IContextMenuFactory):
 
         self.tableModel.setData(parent_rows)
 
-    def createMenuItems(self, invocation):
-        self.context = invocation
-        menuList = ArrayList()
-
-        # Get the selected messages
-        messages = invocation.getSelectedMessages()
-
-        # Menu for JS files
-        if messages:
-            for messageInfo in messages:
-                url = messageInfo.getUrl()
-                if str(url).endswith(".js"):
-                    menuList.add(swing.JMenuItem("Add to Blacklist", actionPerformed=self.add_to_blacklist))
-                    return menuList
-
-        # Menu for table rows
-        row = self.table.getSelectedRow()
-        if row != -1:
-            status = self.tableModel.getValueAt(row, 2)
-            if status == "Historic":
-                menuList.add(swing.JMenuItem("Restore from Historic", actionPerformed=lambda e: self.restore_from_historic(row)))
-
-        return menuList if menuList.size() > 0 else None
-
-    def add_to_blacklist(self, event):
-        messages = self.context.getSelectedMessages()
-        with self.lock:
-            for messageInfo in messages:
-                url = str(messageInfo.getUrl())
-                if url not in self._blacklist["exact_urls"]:
-                    self._blacklist["exact_urls"].append(url)
-        self.save_blacklist()
-        self.load_blacklist_ui()
-
-    def restore_from_historic(self, row):
-        endpoint_to_restore = self.tableModel.getValueAt(row, 0)
-
-        # Find the historic endpoint and move it back to current
-        with self.lock:
-            for url, data in self._data.items():
-                for i, historic_endpoint in enumerate(data["historic_endpoints"]):
-                    if historic_endpoint["endpoint"] == endpoint_to_restore:
-                        restored_endpoint = data["historic_endpoints"].pop(i)
-                        restored_endpoint["status"] = "active"
-                        del restored_endpoint["moved_to_historic"]
-                        del restored_endpoint["reason"]
-                        data["current_endpoints"].append(restored_endpoint)
-                        break
-            self.save_data_to_storage()
-        SwingUtilities.invokeLater(self.update_table)
 
     def clear_table(self, event):
         self.tableModel.setData([])
@@ -738,119 +796,33 @@ class BurpExtender(IBurpExtender, IScannerCheck, ITab, IContextMenuFactory):
 
         return False
 
-    def doPassiveScan(self, ihrr):
-        try:
-            urlReq = ihrr.getUrl()
-            urlStr = str(urlReq)
-            self.callbacks.printOutput("doPassiveScan called for URL: " + urlStr)
-
-            if ".js" in urlStr:
-                self.callbacks.printOutput("JS file detected: " + urlStr)
-                if self.scopeCheckbox.isSelected() and not self.callbacks.isInScope(urlReq):
-                    return None
-
-                self.scanned_files_count += 1
-                if self.is_blacklisted(urlStr, len(ihrr.getResponse())):
-                    self.blacklisted_files_count += 1
-                    self.callbacks.printOutput("\n" + "[-] URL blacklisted " + urlStr)
-                    SwingUtilities.invokeLater(self.update_stats)
-                    return None
-
-                self.callbacks.printOutput("\n" + "[+] Valid URL found: " + urlStr)
-
-                with self.lock:
-                    if urlStr not in self._data:
-                        self._data[urlStr] = {
-                            "current_endpoints": [],
-                            "historic_endpoints": []
-                        }
-                    js_data = self._data[urlStr]
-
-                    previous_endpoints = [e["endpoint"] for e in js_data["current_endpoints"]]
-                    historic_endpoints = [e["endpoint"] for e in js_data["historic_endpoints"]]
-
-                linkA = linkAnalyse(ihrr, self.callbacks, self.helpers)
-                endpoints = linkA.analyseURL()
-
-                new_endpoints = []
-                full_urls = []
-                highlights = []
-
-                if endpoints:
-                    for endpoint in endpoints:
-                        full_url = endpoint['link']
-                        if not linkA.valcheckFullURL(full_url):
-                            full_url = urlparse.urljoin(urlparse.urljoin(urlStr, '/'), full_url)
-
-                        if full_url not in full_urls:
-                            full_urls.append(full_url)
-
-                        if full_url not in previous_endpoints and full_url not in historic_endpoints:
-                            new_endpoints.append(full_url)
-
-                        lh = [endpoint['start'], endpoint['end']]
-                        if lh not in highlights:
-                            highlights.append(lh)
-
-                    with self.lock:
-                        now = datetime.now().isoformat()
-                        for endpoint in full_urls:
-                            if not any(e['endpoint'] == endpoint for e in js_data['current_endpoints']):
-                                js_data['current_endpoints'].append({
-                                    "endpoint": endpoint,
-                                    "first_seen": now,
-                                    "status": "new"
-                                })
-
-                        self._data[urlStr] = js_data
-                        self.save_data_to_storage()
-
-                    self.callbacks.printOutput("Found {} endpoints in {}".format(len(full_urls), urlStr))
-                    self.callbacks.printOutput("Adding row to table: " + urlStr)
-                    SwingUtilities.invokeLater(self.update_table)
-
-                    if full_urls:
-                        issues = ArrayList()
-                        issues.add(SRI(ihrr, self.helpers, self.callbacks, [e['link'] for e in endpoints], full_urls, highlights))
-                        return issues
-        except UnicodeEncodeError:
-            self.callbacks.printOutput("Error in URL decode.")
-
-        return None
-
-    def consolidateDuplicateIssues(self, isb, isa):
-        return -1
     def extensionUnloaded(self):
-        self.callbacks.printOutput("BurpJS LinkFinder v2 unloaded")
-        return
+        self.api.logging().logToOutput("BurpJS LinkFinder v2 unloaded")
 
-    def URL_SPLITTER(self,url):
-        URL_SPLIT = str(url).split("://",1)
-        URL_PROTOCAL = URL_SPLIT[0]
-        if URL_PROTOCAL == 'https':
-            URL_PORT = 443
-        elif URL_PROTOCAL == 'http':
-            URL_PORT = 80
-        else:
-            URL_PORT = 443
-        URL_HOSTNAME = URL_SPLIT[1].split('/',1)[0].split('?',1)[0]
-        if ':' in URL_HOSTNAME:
-            URL_HOSTNAME_FOR_SPLIT = URL_HOSTNAME
-            URL_HOSTNAME = URL_HOSTNAME_FOR_SPLIT.split(':')[0]
-            URL_PORT = int(URL_HOSTNAME_FOR_SPLIT.split(':')[1])
-        URL_HOST_FULL = URL_PROTOCAL+"://"+URL_HOSTNAME
-        try:
-            URL_HOST_SERVICE = self.helpers.buildHttpService(URL_HOSTNAME,URL_PORT,URL_PROTOCAL)
-        except java.lang.IllegalArgumentException:
-            self.callbacks.printOutput("EXCEPTION BECAUSE HTTPSERVICE VALUES IS INVALID : {} : ".format(url))
-            self.callbacks.printOutput("EXCEPTION VALUES ARE :",URL_HOSTNAME,URL_PORT,URL_PROTOCAL)
-        return URL_SPLIT,URL_PROTOCAL,URL_HOSTNAME,URL_PORT,URL_HOST_FULL,URL_HOST_SERVICE
+class MyContextMenuItemsProvider():
+    def __init__(self, extender):
+        self.extender = extender
+
+    def provideMenuItems(self, event):
+        menuItemList = []
+
+        # Get the selected messages
+        messages = event.selectedRequestResponses()
+
+        # Menu for JS files
+        if messages:
+            for messageInfo in messages:
+                url = messageInfo.request().url()
+                if str(url).endswith(".js"):
+                    menuItemList.append(swing.JMenuItem("Add to Blacklist", actionPerformed=lambda e, u=url: self.extender.add_to_blacklist(u)))
+                    return menuItemList
+
+        return menuItemList if menuItemList else None
 
 class linkAnalyse():
 
-    def __init__(self, reqres, callbacks, helpers):
-        self.callbacks = callbacks
-        self.helpers = helpers
+    def __init__(self, reqres, api):
+        self.api = api
         self.reqres = reqres
 
 
@@ -928,12 +900,10 @@ class linkAnalyse():
 
     def analyseURL(self):
         endpoints = ""
-        mime_type=self.helpers.analyzeResponse(self.reqres.getResponse()).getStatedMimeType()
+        mime_type = self.reqres.response().statedMimeType().toString()
         if mime_type.lower() == 'script':
-                url = self.reqres.getUrl()
-                encoded_resp=binascii.b2a_base64(self.reqres.getResponse())
-                decoded_resp=base64.b64decode(encoded_resp)
-                endpoints=self.parser_file(decoded_resp, self.regex_str)
+                body = self.reqres.response().bodyToString()
+                endpoints=self.parser_file(body, self.regex_str)
                 return endpoints
         return endpoints
 
@@ -957,99 +927,10 @@ class linkAnalyse():
         except:
             return False
 
-    def valcheckMappedList(self,myString,mapTxtArea):
-        #Checks if the extracted URL is a full URL or if already in the mapped list
-        #print("Checking URL: " + myString)
-        try:
-            if (myString in mapTxtArea.text):
-                #print("Found HTTP in URL: " + myString)
-                return False
-
-        except Exception as e:
-            self.callbacks.printOutput(myString + "\t" + str(e))
-            return True
-
-        #print("Returning Default: " + myString)
-        return True
-
     def valcheckFullURL(self,myString):
         try:
             if (myString[:4].lower() == 'http'):
                 return True
         except Exception as e:
-            self.callbacks.printOutput(myString + "\t" + str(e))
+            self.api.logging().logToOutput(myString + "\t" + str(e))
         return False
-
-class SRI(IScanIssue,ITab):
-    def __init__(self, reqres, helpers, callbacks, links, full_urls, highlights):
-        self.helpers = helpers
-        self.callbacks = callbacks
-
-        self.links = links
-        self.links.sort()
-        self.full_urls = full_urls
-        self.full_urls.sort()
-
-        al = ArrayList()
-        i=0
-        while i<len(highlights):
-            al.add(array([highlights[i][0],highlights[i][1]],'i'))
-            i+=1
-        self.highlights = al
-        self.reqres = self.callbacks.applyMarkers(reqres,None,self.highlights)
-
-        self.issue_detail = "Burp Scanner has analysed this JS file and has discovered the following link values: <ul>\n"
-        i=0
-        while i<len(self.links):
-            self.issue_detail += "<li>{}</li>\n".format(cgi.escape(self.links[i]))
-            i+=1
-        self.issue_detail += "</ul>The following full normalized URLs were generated from the discovered link values: <ul>\n"
-        i=0
-        while i<len(self.full_urls):
-            self.issue_detail += "<li>{}</li>\n".format(cgi.escape(self.full_urls[i]))
-            i+=1
-        self.issue_detail = str(self.issue_detail)
-
-    def getHost(self):
-        return self.reqres.getHost()
-
-    def getPort(self):
-        return self.reqres.getPort()
-
-    def getProtocol(self):
-        return self.reqres.getProtocol()
-
-    def getUrl(self):
-        return self.reqres.getUrl()
-
-    def getIssueName(self):
-        return "Linkfinder Analysed JS files"
-
-    def getIssueType(self):
-        return 0x08000000  # See http:#portswigger.net/burp/help/scanner_issuetypes.html
-
-    def getSeverity(self):
-        return "Information"  # "High", "Medium", "Low", "Information" or "False positive"
-
-    def getConfidence(self):
-        return "Certain"  # "Certain", "Firm" or "Tentative"
-
-    def getIssueBackground(self):
-        return str("JS files holds links to other parts of web applications. Refer to TAB for results.")
-
-    def getRemediationBackground(self):
-        return None
-
-    def getIssueDetail(self):
-        return self.issue_detail
-
-    def getRemediationDetail(self):
-        return None
-
-    def getHttpMessages(self):
-        #print ("................raising issue................")
-        rra = [self.reqres]
-        return rra
-
-    def getHttpService(self):
-        return self.reqres.getHttpService()
