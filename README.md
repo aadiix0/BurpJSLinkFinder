@@ -45,4 +45,3 @@ Instructions based on the most recent versions of Burp. The following configurat
 - Added filename extracter pane (31/12/2021)
 - Added URL mapper, very basic at this time (31/12/2021)
 - Minor cosmetic changes on the log for quicker copy paste (31/12/2021)
-# Test commit
