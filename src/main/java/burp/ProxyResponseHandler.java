@@ -3,9 +3,9 @@ package burp;
 import burp.api.montoya.MontoyaApi;
 import burp.api.montoya.http.message.HttpRequestResponse;
 import burp.api.montoya.http.message.responses.HttpResponse;
-import burp.api.montoya.proxy.ProxyResponseHandler;
-import burp.api.montoya.proxy.ProxyResponseReceivedAction;
-import burp.api.montoya.proxy.ProxyResponseReceivedRequestResponse;
+import burp.api.montoya.proxy.http.ProxyResponseHandler;
+import burp.api.montoya.proxy.http.ProxyResponseReceivedAction;
+import burp.api.montoya.proxy.http.ProxyResponseReceived;
 
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
@@ -24,19 +24,19 @@ public class ProxyResponseHandler implements burp.api.montoya.proxy.ProxyRespons
     }
 
     @Override
-    public ProxyResponseReceivedAction handleResponseReceived(ProxyResponseReceivedRequestResponse requestResponse) {
-        String url = requestResponse.request().url();
-        HttpResponse response = requestResponse.response();
+    public ProxyResponseReceivedAction handleResponseReceived(ProxyResponseReceived responseReceived) {
+        String url = responseReceived.request().url();
+        HttpResponse response = responseReceived.response();
 
         boolean isJsFile = url.endsWith(".js") ||
-                (response.contentType() != null &&
-                        (response.contentType().toString().toLowerCase().contains("application/javascript") ||
-                                response.contentType().toString().toLowerCase().contains("text/javascript")));
+                (response.mimeType() != null &&
+                        (response.mimeType().toString().toLowerCase().contains("application/javascript") ||
+                                response.mimeType().toString().toLowerCase().contains("text/javascript")));
 
         if (isJsFile) {
             for (String excludedLib : EXCLUDED_LIBS) {
                 if (url.contains(excludedLib)) {
-                    return ProxyResponseReceivedAction.continueWith(requestResponse);
+                    return ProxyResponseReceivedAction.continueWith(responseReceived);
                 }
             }
 
@@ -49,6 +49,6 @@ public class ProxyResponseHandler implements burp.api.montoya.proxy.ProxyRespons
             }
         }
 
-        return ProxyResponseReceivedAction.continueWith(requestResponse);
+        return ProxyResponseReceivedAction.continueWith(responseReceived);
     }
 }
