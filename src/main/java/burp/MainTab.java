@@ -20,7 +20,7 @@ public class MainTab extends JPanel {
     public MainTab(ConcurrentHashMap<String, List<Endpoint>> currentData, ConcurrentHashMap<String, List<Endpoint>> historicData) {
         this.currentData = currentData;
         this.historicData = historicData;
-        this.tableModel = new TreeTableModel(currentData);
+        this.tableModel = new TreeTableModel(currentData, historicData);
         setLayout(new BorderLayout());
     }
 
