@@ -66,6 +66,23 @@ class BadgeRenderer(DefaultTableCellRenderer):
 
         return self
 
+class TreeCellRenderer(DefaultTableCellRenderer):
+    def getTableCellRendererComponent(self, table, value, isSelected, hasFocus, row, column):
+        super(TreeCellRenderer, self).getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column)
+
+        row_obj = table.getModel().getRow(row)
+        if isinstance(row_obj, ParentRow):
+            if row_obj.expanded:
+                self.setText(u"\u25BC") # Down-pointing triangle
+            else:
+                self.setText(u"\u25B6") # Right-pointing triangle
+            self.setBorder(swing.BorderFactory.createEmptyBorder(0, 5, 0, 0))
+        elif isinstance(row_obj, ChildRow):
+            self.setText("")
+            self.setBorder(swing.BorderFactory.createEmptyBorder(0, 20, 0, 0))
+
+        return self
+
 class BlacklistTableModel(AbstractTableModel):
     def __init__(self):
         self.data = []
@@ -87,13 +104,18 @@ class BlacklistTableModel(AbstractTableModel):
         self.data = new_data
         self.fireTableDataChanged()
 
-class EndpointTableModel(AbstractTableModel):
-    def __init__(self):
-        self.data = []
-        self.column_names = ["JS File URL", "New Endpoints", "Status"]
+class TreeTableModel(AbstractTableModel):
+    def __init__(self, data):
+        self.data = data
+        self.column_names = ["", "JS File URL", "New Endpoints", "Status"]
 
     def getRowCount(self):
-        return len(self.data)
+        count = 0
+        for parent in self.data:
+            count += 1
+            if parent.expanded:
+                count += len(parent.children)
+        return count
 
     def getColumnCount(self):
         return len(self.column_names)
@@ -102,11 +124,69 @@ class EndpointTableModel(AbstractTableModel):
         return self.column_names[column_index]
 
     def getValueAt(self, row_index, column_index):
-        return self.data[row_index][column_index]
+        row = self.getRow(row_index)
+        if isinstance(row, ParentRow):
+            if column_index == 0:
+                return ""
+            elif column_index == 1:
+                return row.url
+            elif column_index == 2:
+                return row.new_endpoints_count
+            elif column_index == 3:
+                return row.status
+        elif isinstance(row, ChildRow):
+            if column_index == 1:
+                return row.endpoint
+            elif column_index == 2:
+                return row.type
+            elif column_index == 3:
+                return row.method
+        return ""
+
+    def getRow(self, row_index):
+        current_index = 0
+        for parent in self.data:
+            if current_index == row_index:
+                return parent
+            current_index += 1
+            if parent.expanded:
+                if row_index < current_index + len(parent.children):
+                    return parent.children[row_index - current_index]
+                current_index += len(parent.children)
+        return None
 
     def setData(self, new_data):
         self.data = new_data
         self.fireTableDataChanged()
+
+class Row(object):
+    pass
+
+class ParentRow(Row):
+    def __init__(self, url, new_endpoints_count, status, endpoints):
+        self.url = url
+        self.new_endpoints_count = new_endpoints_count
+        self.status = status
+        self.children = [ChildRow(e['endpoint']) for e in endpoints]
+        self.expanded = False
+
+class ChildRow(Row):
+    def __init__(self, endpoint):
+        self.endpoint = endpoint
+        self.type = self.get_endpoint_type(endpoint)
+        self.method = "" # Not available in current data
+
+    def get_endpoint_type(self, endpoint):
+        if re.search(r'/api/', endpoint):
+            return "API"
+        elif endpoint.startswith(('http:', 'https:')):
+            return "Absolute URL"
+        elif endpoint.startswith(('../', './')):
+            return "Relative Path"
+        elif re.search(r'\.(json|xml|txt|pdf|zip)$', endpoint):
+            return "File"
+        else:
+            return "Path"
 
 # Using the Runnable class for thread-safety with Swing
 class Run(Runnable):
@@ -144,17 +224,22 @@ class BurpExtender(IBurpExtender, IScannerCheck, ITab, IContextMenuFactory):
             self.extender = extender
 
         def mouseClicked(self, event):
-            row = self.extender.table.rowAtPoint(event.getPoint())
-            col = self.extender.table.columnAtPoint(event.getPoint())
+            row_index = self.extender.table.rowAtPoint(event.getPoint())
+            col_index = self.extender.table.columnAtPoint(event.getPoint())
 
-            if col == 1:
-                url = self.extender.tableModel.getValueAt(row, 0)
-                with self.extender.lock:
-                    data = self.extender._data[url]
-                    new_endpoints = [e for e in data["current_endpoints"] if e.get("status") == "new"]
+            row = self.extender.tableModel.getRow(row_index)
+            if isinstance(row, ParentRow):
+                if col_index == 0: # Expand/collapse column
+                    row.expanded = not row.expanded
+                    self.extender.tableModel.fireTableDataChanged()
+                elif col_index == 2: # "New Endpoints" column
+                    url = row.url
+                    with self.extender.lock:
+                        data = self.extender._data[url]
+                        new_endpoints = [e for e in data["current_endpoints"] if e.get("status") == "new"]
 
-                if new_endpoints:
-                    self.extender.toggle_details_card(row, url, new_endpoints)
+                    if new_endpoints:
+                        self.extender.toggle_details_card(row_index, url, new_endpoints)
 
     def toggle_details_card(self, row, url, new_endpoints):
         if self.details_card_panel.isVisible():
@@ -285,71 +370,24 @@ class BurpExtender(IBurpExtender, IScannerCheck, ITab, IContextMenuFactory):
         callbacks.registerContextMenuFactory(self)
         self.initUI()
         # customize our UI components
-        callbacks.customizeUiComponent(self._splitpane)
-        callbacks.customizeUiComponent(self.logPane)
-        callbacks.customizeUiComponent(self._parentPane)
         callbacks.customizeUiComponent(self._parentPane)
         # add the custom tab to Burp's UI
         callbacks.addSuiteTab(self)
 
         callbacks.printOutput("BurpJS LinkFinder v2 loaded.")
         callbacks.printOutput("Copyright (c) 2022 Frans Hendrik Botes")
-        self.outputTxtArea.setText("BurpJS LinkFinder loaded." + "\n" + "Copyright (c) 2022 Frans Hendrik Botes" + "\n")
 
     def initUI(self):
         self._parentPane = JTabbedPane()
-        # The main split pane for the components
-        self._splitpane = JSplitPane(JSplitPane.HORIZONTAL_SPLIT)
-        self._splitpane.setDividerLocation(800)
-        # The split pane for the mapping and filenames
-        self._splitpane2 = JSplitPane(JSplitPane.VERTICAL_SPLIT)
-        self._splitpane2.setDividerLocation(300)
-        # UI for Log Output
-        self.logPanel = swing.JPanel()
-        self.outputLabel = swing.JLabel("LinkFinder Log:")
-        self.outputLabel.setFont(Font("Tahoma", Font.BOLD, 12))
-        self.outputLabel.setForeground(Color(255,102,52))
-        self.logPane = swing.JScrollPane()
-        self.outputTxtArea = swing.JTextArea()
-        self.outputTxtArea.setFont(Font("Consolas", Font.PLAIN, 10))
-        self.outputTxtArea.setLineWrap(True)
-        self.logPane.setViewportView(self.outputTxtArea)
-        self.clearBtn = swing.JButton("Clear", actionPerformed=self.clearLog)
-        self.exportBtn = swing.JButton("Export", actionPerformed=self.exportLog)
-        self.parentFrm = swing.JFileChooser()
-        # Layout
-        layout = swing.GroupLayout(self.logPanel)
-        layout.setAutoCreateGaps(True)
-        layout.setAutoCreateContainerGaps(True)
-        self.logPanel.setLayout(layout)
-
-        layout.setHorizontalGroup(
-            layout.createParallelGroup()
-            .addGroup(layout.createSequentialGroup()
-                .addGroup(layout.createParallelGroup()
-                    .addComponent(self.outputLabel)
-                    .addComponent(self.logPane)
-                    .addComponent(self.clearBtn)
-                    .addComponent(self.exportBtn)
-                )
-            )
-        )
-        layout.setVerticalGroup(
-            layout.createParallelGroup()
-            .addGroup(layout.createParallelGroup()
-                .addGroup(layout.createSequentialGroup()
-                    .addComponent(self.outputLabel)
-                    .addComponent(self.logPane)
-                    .addComponent(self.clearBtn)
-                    .addComponent(self.exportBtn)
-                )
-            )
-        )
 
         # UI for Endpoints Table
-        self.tableModel = EndpointTableModel()
+        self.tableModel = TreeTableModel([])
         self.table = JTable(self.tableModel)
-        self.table.getColumnModel().getColumn(1).setCellRenderer(BadgeRenderer())
+        self.table.getColumnModel().getColumn(0).setCellRenderer(TreeCellRenderer())
+        self.table.getColumnModel().getColumn(0).setPreferredWidth(20)
+        self.table.getColumnModel().getColumn(1).setPreferredWidth(400)
+        self.table.getColumnModel().getColumn(2).setPreferredWidth(100)
+        self.table.getColumnModel().getColumn(3).setPreferredWidth(100)
         self.table.addMouseListener(self.TableMouseListener(self))
         self.scrollPane = JScrollPane(self.table)
 
@@ -365,12 +403,21 @@ class BurpExtender(IBurpExtender, IScannerCheck, ITab, IContextMenuFactory):
         # Details card panel (initially hidden)
         self.details_card_panel = JPanel(BorderLayout())
         self.details_card_panel.setVisible(False)
-        main_panel.add(self.details_card_panel, BorderLayout.SOUTH)
 
-        #Set up all the panes
-        self._splitpane.setLeftComponent(self.logPanel)
-        self._splitpane.setRightComponent(main_panel)
-        self._parentPane.addTab("Main", self._splitpane)
+        # Bottom buttons
+        self.clearBtn = swing.JButton("Clear", actionPerformed=self.clear_table)
+        self.exportBtn = swing.JButton("Export", actionPerformed=self.export_table)
+        button_panel = JPanel()
+        button_panel.add(self.clearBtn)
+        button_panel.add(self.exportBtn)
+
+        south_container = JPanel(BorderLayout())
+        south_container.add(self.details_card_panel, BorderLayout.CENTER)
+        south_container.add(button_panel, BorderLayout.SOUTH)
+
+        main_panel.add(south_container, BorderLayout.SOUTH)
+
+        self._parentPane.addTab("Main", main_panel)
 
         # UI for Blacklist Settings
         self.blacklistPanel = swing.JPanel()
@@ -581,18 +628,19 @@ class BurpExtender(IBurpExtender, IScannerCheck, ITab, IContextMenuFactory):
 
     def update_table(self):
         with self.lock:
-            table_data = []
+            parent_rows = []
             show_historic = self.showHistoricCheckbox.isSelected()
 
             for url, data in self._data.items():
                 new_endpoints_count = len([e for e in data["current_endpoints"] if e.get("status") == "new"])
-                table_data.append([url, new_endpoints_count, "Active"])
 
+                endpoints = data["current_endpoints"]
                 if show_historic:
-                    for endpoint in data["historic_endpoints"]:
-                        table_data.append([endpoint["endpoint"], 0, "Historic"])
+                    endpoints.extend(data["historic_endpoints"])
 
-        self.tableModel.setData(table_data)
+                parent_rows.append(ParentRow(url, new_endpoints_count, "Active", endpoints))
+
+        self.tableModel.setData(parent_rows)
 
     def createMenuItems(self, invocation):
         self.context = invocation
@@ -645,14 +693,22 @@ class BurpExtender(IBurpExtender, IScannerCheck, ITab, IContextMenuFactory):
             self.save_data_to_storage()
         SwingUtilities.invokeLater(self.update_table)
 
-    def clearLog(self, event):
-        self.outputTxtArea.setText("BurpJS LinkFinder loaded." + "\n" + "Copyright (c) 2022 Frans Hendrik Botes" + "\n" )
-    def exportLog(self, event):
+    def clear_table(self, event):
+        self.tableModel.setData([])
+
+    def export_table(self, event):
         chooseFile = JFileChooser()
-        ret = chooseFile.showDialog(self.logPane, "Choose file")
-        filename = chooseFile.getSelectedFile().getCanonicalPath()
-        self.callbacks.printOutput("\n" + "Export to : " + filename)
-        open(filename, 'w', 0).write(self.outputTxtArea.text)
+        ret = chooseFile.showDialog(self._parentPane, "Choose file")
+        if ret == JFileChooser.APPROVE_OPTION:
+            filename = chooseFile.getSelectedFile().getCanonicalPath()
+            with open(filename, 'w') as f:
+                for row_index in range(self.tableModel.getRowCount()):
+                    row = self.tableModel.getRow(row_index)
+                    if isinstance(row, ParentRow):
+                        f.write(row.url + '\n')
+                        for child in row.children:
+                            f.write('\t' + child.endpoint + '\n')
+
     def is_blacklisted(self, url_str, response_length):
         with self.lock:
             # Check exact URLs
@@ -698,7 +754,7 @@ class BurpExtender(IBurpExtender, IScannerCheck, ITab, IContextMenuFactory):
                     SwingUtilities.invokeLater(self.update_stats)
                     return None
 
-                self.outputTxtArea.append("\n" + "[+] Valid URL found: " + urlStr)
+                self.callbacks.printOutput("\n" + "[+] Valid URL found: " + urlStr)
 
                 with self.lock:
                     if urlStr not in self._data:
