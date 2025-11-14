@@ -22,7 +22,7 @@ public class BurpExtender implements BurpExtension {
         api.extension().setName("NewJSLink Finder");
 
         api.userInterface().registerSuiteTab("NewJSLink", mainTab);
-        api.proxy().registerResponseHandler(new JSLinkProxyHandler(api, currentData, mainTab.getTableModel()));
+        api.http().registerHttpHandler(new JSLinkHttpHandler(api, currentData, mainTab.getTableModel()));
 
         api.logging().logToOutput("NewJSLink Finder loaded successfully.");
     }
