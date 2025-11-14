@@ -1,17 +1,17 @@
 package burp;
 
 import burp.api.montoya.MontoyaApi;
-import burp.api.montoya.proxy.http.ProxyHttpResponseHandler;
+import burp.api.montoya.proxy.http.ProxyResponseHandler;
 import burp.api.montoya.proxy.http.ProxyResponseReceivedAction;
 import burp.api.montoya.proxy.http.ProxyResponseToBeSentAction;
-import burp.api.montoya.proxy.http.InterceptedHttpResponse;
+import burp.api.montoya.proxy.http.InterceptedResponse;
 import burp.api.montoya.http.message.responses.HttpResponse;
 
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import javax.swing.SwingUtilities;
 
-public class JSLinkProxyHandler implements ProxyHttpResponseHandler {
+public class JSLinkProxyHandler implements ProxyResponseHandler {
     private final MontoyaApi api;
     private final ConcurrentHashMap<String, List<Endpoint>> data;
     private final TreeTableModel tableModel;
@@ -24,7 +24,7 @@ public class JSLinkProxyHandler implements ProxyHttpResponseHandler {
     }
 
     @Override
-    public ProxyResponseReceivedAction handleResponseReceived(InterceptedHttpResponse interceptedResponse) {
+    public ProxyResponseReceivedAction handleResponseReceived(InterceptedResponse interceptedResponse) {
         String url = interceptedResponse.initiatingRequest().url();
 
         String contentType = interceptedResponse.headerValue("Content-Type");
@@ -50,7 +50,7 @@ public class JSLinkProxyHandler implements ProxyHttpResponseHandler {
     }
 
     @Override
-    public ProxyResponseToBeSentAction handleResponseToBeSent(InterceptedHttpResponse interceptedResponse) {
+    public ProxyResponseToBeSentAction handleResponseToBeSent(InterceptedResponse interceptedResponse) {
         return ProxyResponseToBeSentAction.continueWith(interceptedResponse);
     }
 }
