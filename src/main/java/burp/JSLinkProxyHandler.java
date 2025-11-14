@@ -27,7 +27,8 @@ public class JSLinkProxyHandler implements ProxyResponseHandler {
     public ProxyResponseReceivedAction handleResponseReceived(InterceptedResponse interceptedResponse) {
         String url = interceptedResponse.initiatingRequest().url();
 
-        String contentType = interceptedResponse.headerValue("Content-Type");
+        HttpResponse response = (HttpResponse) interceptedResponse;
+        String contentType = response.headerValue("Content-Type");
         boolean isJS = (contentType != null && (contentType.toLowerCase().contains("javascript") || url.toLowerCase().endsWith(".js")));
 
         if (isJS) {
