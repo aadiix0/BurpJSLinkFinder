@@ -36,11 +36,36 @@ public class MainTab extends JPanel {
         table.getColumnModel().getColumn(0).setCellRenderer(new TreeCellRenderer());
         table.getColumnModel().getColumn(0).setPreferredWidth(20);
 
+        // Enable text selection within cells
+        table.setDefaultEditor(Object.class, new DefaultCellEditor(new JTextField()) {
+            @Override
+            public Component getTableCellEditorComponent(JTable table, Object value,
+                    boolean isSelected, int row, int column) {
+                JTextField textField = (JTextField) super.getTableCellEditorComponent(
+                    table, value, isSelected, row, column);
+                textField.setEditable(false);
+                return textField;
+            }
+        });
+        table.setSurrendersFocusOnKeystroke(true);
+        table.putClientProperty("JTable.autoStartsEdit", Boolean.TRUE);
+        DefaultCellEditor editor = (DefaultCellEditor) table.getDefaultEditor(Object.class);
+        editor.setClickCountToStart(1);
+
         // Add KeyListener for Ctrl+C
         table.addKeyListener(new java.awt.event.KeyAdapter() {
             @Override
             public void keyPressed(java.awt.event.KeyEvent e) {
                 if (e.isControlDown() && e.getKeyCode() == java.awt.event.KeyEvent.VK_C) {
+                    Component editor = table.getEditorComponent();
+                    if (editor instanceof JTextField) {
+                        JTextField field = (JTextField) editor;
+                        String selectedText = field.getSelectedText();
+                        if (selectedText != null && !selectedText.isEmpty()) {
+                            copyToClipboard(selectedText);
+                            return;
+                        }
+                    }
                     copySelectedRowToClipboard();
                 }
             }
@@ -53,9 +78,8 @@ public class MainTab extends JPanel {
                 int row = table.rowAtPoint(e.getPoint());
                 if (row >= 0) {
                     Row rowObject = tableModel.getRow(row);
-                    if (rowObject instanceof ParentRow) {
-                        ParentRow parentRow = (ParentRow) rowObject;
-                        parentRow.setExpanded(!parentRow.isExpanded());
+                    if (rowObject instanceof ParentRow || rowObject instanceof CategoryRow) {
+                        rowObject.setExpanded(!rowObject.isExpanded());
                         tableModel.fireTableDataChanged();
                     }
                 }
@@ -142,11 +166,21 @@ public class MainTab extends JPanel {
             String textToCopy = "";
             if (rowObject instanceof ParentRow) {
                 textToCopy = ((ParentRow) rowObject).getJsFileUrl();
+            } else if (rowObject instanceof CategoryRow) {
+                StringBuilder sb = new StringBuilder();
+                for (ChildRow child : ((CategoryRow) rowObject).getChildren()) {
+                    sb.append(child.getEndpoint().getUrl()).append("\n");
+                }
+                textToCopy = sb.toString();
             } else if (rowObject instanceof ChildRow) {
                 textToCopy = ((ChildRow) rowObject).getEndpoint().getUrl();
             }
-            StringSelection stringSelection = new StringSelection(textToCopy);
-            Toolkit.getDefaultToolkit().getSystemClipboard().setContents(stringSelection, null);
+            copyToClipboard(textToCopy);
         }
+    }
+
+    private void copyToClipboard(String text) {
+        StringSelection stringSelection = new StringSelection(text);
+        Toolkit.getDefaultToolkit().getSystemClipboard().setContents(stringSelection, null);
     }
 }

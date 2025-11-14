@@ -2,26 +2,44 @@ package burp;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.Map;
 
 public abstract class Row {
+    private boolean expanded = false;
+    public abstract int getLevel();
+
+    public boolean isExpanded() {
+        return expanded;
+    }
+
+    public void setExpanded(boolean expanded) {
+        this.expanded = expanded;
+    }
 }
 
 class ParentRow extends Row {
     private final String jsFileUrl;
     private final int endpointCount;
     private final String status;
-    private final List<ChildRow> children;
-    private boolean expanded;
+    private final List<CategoryRow> children;
 
     public ParentRow(String jsFileUrl, List<Endpoint> endpoints) {
         this.jsFileUrl = jsFileUrl;
         this.endpointCount = endpoints.size();
         this.status = "Complete";
-        this.children = new ArrayList<>();
-        for (Endpoint endpoint : endpoints) {
-            this.children.add(new ChildRow(endpoint));
-        }
-        this.expanded = false;
+
+        Map<String, List<Endpoint>> groupedEndpoints = endpoints.stream()
+                .collect(Collectors.groupingBy(Endpoint::getType));
+
+        this.children = groupedEndpoints.entrySet().stream()
+                .map(entry -> new CategoryRow(entry.getKey(), entry.getValue()))
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public int getLevel() {
+        return 0;
     }
 
     public String getJsFileUrl() {
@@ -36,16 +54,35 @@ class ParentRow extends Row {
         return status;
     }
 
-    public List<ChildRow> getChildren() {
+    public List<CategoryRow> getChildren() {
         return children;
     }
+}
 
-    public boolean isExpanded() {
-        return expanded;
+class CategoryRow extends Row {
+    private final String categoryName;
+    private final List<ChildRow> children;
+
+    public CategoryRow(String categoryName, List<Endpoint> endpoints) {
+        this.categoryName = categoryName;
+        this.children = endpoints.stream().map(ChildRow::new).collect(Collectors.toList());
     }
 
-    public void setExpanded(boolean expanded) {
-        this.expanded = expanded;
+    @Override
+    public int getLevel() {
+        return 1;
+    }
+
+    public String getCategoryName() {
+        return categoryName;
+    }
+
+    public int getEndpointCount() {
+        return children.size();
+    }
+
+    public List<ChildRow> getChildren() {
+        return children;
     }
 }
 
@@ -56,22 +93,12 @@ class ChildRow extends Row {
         this.endpoint = endpoint;
     }
 
-    public Endpoint getEndpoint() {
-        return endpoint;
+    @Override
+    public int getLevel() {
+        return 2;
     }
 
-    public String getIcon() {
-        switch (endpoint.getType()) {
-            case "Path":
-                return "📁";
-            case "File":
-                return "📄";
-            case "Absolute URL":
-                return "🌐";
-            case "API":
-                return "⚡";
-            default:
-                return "→";
-        }
+    public Endpoint getEndpoint() {
+        return endpoint;
     }
 }
