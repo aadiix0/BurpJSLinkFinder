@@ -77,8 +77,10 @@ public class TreeTableModel extends AbstractTableModel {
         } else if (row instanceof ChildRow) {
             ChildRow childRow = (ChildRow) row;
             switch (columnIndex) {
+                case 0:
+                    return childRow.getIcon();
                 case 1:
-                    return "  → " + childRow.getEndpoint().getUrl();
+                    return childRow.getEndpoint().getUrl();
                 case 2:
                     return childRow.getEndpoint().getType();
                 case 3:

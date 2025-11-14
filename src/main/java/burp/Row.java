@@ -59,4 +59,19 @@ class ChildRow extends Row {
     public Endpoint getEndpoint() {
         return endpoint;
     }
+
+    public String getIcon() {
+        switch (endpoint.getType()) {
+            case "Path":
+                return "📁";
+            case "File":
+                return "📄";
+            case "Absolute URL":
+                return "🌐";
+            case "API":
+                return "⚡";
+            default:
+                return "→";
+        }
+    }
 }

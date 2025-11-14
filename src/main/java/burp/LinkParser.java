@@ -34,20 +34,14 @@ public class LinkParser {
     }
 
     private static String categorizeEndpoint(String endpoint) {
-        if (endpoint.matches(".*[a-zA-Z]{1,10}://.*")) {
-            return "Absolute URL";
-        }
         if (endpoint.startsWith("/api/")) {
             return "API";
         }
         if (endpoint.matches(".*\\.(js|json|xml|html|css|png|jpg|gif)$")) {
             return "File";
         }
-        if (endpoint.startsWith("/")) {
-            return "Absolute Path";
-        }
-        if (endpoint.startsWith("../") || endpoint.startsWith("./")) {
-            return "Relative Path";
+        if (endpoint.matches(".*[a-zA-Z]{1,10}://.*")) {
+            return "Absolute URL";
         }
         return "Path";
     }

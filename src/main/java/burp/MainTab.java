@@ -2,6 +2,7 @@ package burp;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.datatransfer.StringSelection;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.File;
@@ -34,6 +35,18 @@ public class MainTab extends JPanel {
         table = new JTable(tableModel);
         table.getColumnModel().getColumn(0).setCellRenderer(new TreeCellRenderer());
         table.getColumnModel().getColumn(0).setPreferredWidth(20);
+
+        // Add KeyListener for Ctrl+C
+        table.addKeyListener(new java.awt.event.KeyAdapter() {
+            @Override
+            public void keyPressed(java.awt.event.KeyEvent e) {
+                if (e.isControlDown() && e.getKeyCode() == java.awt.event.KeyEvent.VK_C) {
+                    copySelectedRowToClipboard();
+                }
+            }
+        });
+
+        // Add MouseListener for expand/collapse and right-click
         table.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
@@ -47,7 +60,32 @@ public class MainTab extends JPanel {
                     }
                 }
             }
+
+            @Override
+            public void mousePressed(MouseEvent e) {
+                if (e.isPopupTrigger()) {
+                    showPopup(e);
+                }
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                if (e.isPopupTrigger()) {
+                    showPopup(e);
+                }
+            }
+
+            private void showPopup(MouseEvent e) {
+                int row = table.rowAtPoint(e.getPoint());
+                table.setRowSelectionInterval(row, row);
+                JPopupMenu popupMenu = new JPopupMenu();
+                JMenuItem copyItem = new JMenuItem("Copy URL");
+                copyItem.addActionListener(l -> copySelectedRowToClipboard());
+                popupMenu.add(copyItem);
+                popupMenu.show(e.getComponent(), e.getX(), e.getY());
+            }
         });
+
         add(new JScrollPane(table), BorderLayout.CENTER);
 
         JPanel buttonPanel = new JPanel();
@@ -94,6 +132,21 @@ public class MainTab extends JPanel {
             } catch (Exception e) {
                 e.printStackTrace();
             }
+        }
+    }
+
+    private void copySelectedRowToClipboard() {
+        int selectedRow = table.getSelectedRow();
+        if (selectedRow != -1) {
+            Row rowObject = tableModel.getRow(selectedRow);
+            String textToCopy = "";
+            if (rowObject instanceof ParentRow) {
+                textToCopy = ((ParentRow) rowObject).getJsFileUrl();
+            } else if (rowObject instanceof ChildRow) {
+                textToCopy = ((ChildRow) rowObject).getEndpoint().getUrl();
+            }
+            StringSelection stringSelection = new StringSelection(textToCopy);
+            Toolkit.getDefaultToolkit().getSystemClipboard().setContents(stringSelection, null);
         }
     }
 }
