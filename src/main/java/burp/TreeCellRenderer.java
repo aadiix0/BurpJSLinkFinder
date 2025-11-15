@@ -11,10 +11,12 @@ public class TreeCellRenderer extends DefaultTableCellRenderer {
         TreeTableModel model = (TreeTableModel) table.getModel();
         Row rowObject = model.getRow(row);
 
-        if (rowObject != null) {
+        if (rowObject instanceof ParentRow) {
             setText(value.toString());
-            setIcon(null);
-            setBorder(BorderFactory.createEmptyBorder(0, rowObject.getLevel() * 20 + 5, 0, 0));
+            setBorder(BorderFactory.createEmptyBorder(0, 5, 0, 0));
+        } else if (rowObject instanceof EndpointRow) {
+            setText(value.toString());
+            setBorder(BorderFactory.createEmptyBorder(0, 25, 0, 0));
         }
 
         return this;

@@ -35,8 +35,20 @@ public class MainTab extends JPanel {
             if (!e.getValueIsAdjusting()) {
                 int selectedRow = table.getSelectedRow();
                 if (selectedRow != -1) {
-                    ParentRow parentRow = tableModel.getParentRow(selectedRow);
-                    updateEndpointTextArea(parentRow);
+                    Row row = tableModel.getRow(selectedRow);
+                    if (row instanceof ParentRow) {
+                        updateEndpointTextArea((ParentRow) row);
+                    }
+                }
+            }
+        });
+
+        table.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                int row = table.rowAtPoint(e.getPoint());
+                if (row >= 0 && table.columnAtPoint(e.getPoint()) == 0) {
+                    tableModel.toggleRow(row);
                 }
             }
         });
