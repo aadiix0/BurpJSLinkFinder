@@ -12,7 +12,7 @@ public class FileCategoryRenderer extends DefaultTableCellRenderer {
         Object rowObject = model.getRow(row);
 
         if (rowObject instanceof JSFileRow) {
-            setFont(new Font("Arial", Font.BOLD, 14));
+            setFont(new Font("Arial", Font.BOLD, 12));
         } else {
             setFont(new Font("Arial", Font.PLAIN, 12));
         }

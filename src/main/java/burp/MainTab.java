@@ -24,12 +24,35 @@ public class MainTab {
         this.jsFileTableModel = new JSFileTableModel(allJSFiles);
 
         jsFileTable = new JTable(jsFileTableModel);
+        TableRowSorter<javax.swing.table.TableModel> sorter = new TableRowSorter<>(jsFileTable.getModel());
+        jsFileTable.setRowSorter(sorter);
+        sorter.setComparator(2, new java.util.Comparator<String>() {
+            @Override
+            public int compare(String s1, String s2) {
+                int num1 = extractNumber(s1);
+                int num2 = extractNumber(s2);
+                return Integer.compare(num1, num2);
+            }
+
+            private int extractNumber(String s) {
+                if (s == null || s.isEmpty()) return 0;
+                try {
+                    String num = s.replaceAll("[^0-9]", "");
+                    return Integer.parseInt(num);
+                } catch (Exception e) {
+                    return 0;
+                }
+            }
+        });
+        sorter.setComparator(0, java.util.Comparator.comparingInt(o -> (Integer) o));
         jsFileTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         jsFileTable.getColumnModel().getColumn(0).setPreferredWidth(50);
         jsFileTable.getColumnModel().getColumn(1).setPreferredWidth(500);
         jsFileTable.getColumnModel().getColumn(2).setPreferredWidth(100);
         jsFileTable.getColumnModel().getColumn(3).setPreferredWidth(100);
         jsFileTable.getColumnModel().getColumn(1).setCellRenderer(new FileCategoryRenderer());
+        jsFileTable.getColumnModel().getColumn(3).setCellEditor(new TagCellEditor());
+        jsFileTable.getColumnModel().getColumn(3).setCellRenderer(new TagCellRenderer());
 
         endpointsTextArea = new LineNumberTextArea();
 
@@ -85,6 +108,17 @@ public class MainTab {
 
         JPanel mainPanel = new JPanel(new BorderLayout());
         mainPanel.add(splitPane, BorderLayout.CENTER);
+
+        JToggleButton editModeButton = new JToggleButton("Edit Mode");
+        editModeButton.addActionListener(e -> {
+            boolean editMode = editModeButton.isSelected();
+            endpointsTextArea.getTextArea().setEditable(editMode);
+            endpointsTextArea.getTextArea().setBackground(editMode ? Color.WHITE : new Color(245, 245, 245));
+        });
+
+        JPanel southPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        southPanel.add(editModeButton);
+        mainPanel.add(southPanel, BorderLayout.SOUTH);
 
         return mainPanel;
     }

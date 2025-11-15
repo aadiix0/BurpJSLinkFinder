@@ -9,6 +9,7 @@ public class JSFileData {
     private List<String> latest;
     private long firstScanTimestamp;
     private long lastScanTimestamp;
+    private String status;
 
     public JSFileData(String jsFileUrl, List<String> endpoints) {
         this.jsFileUrl = jsFileUrl;
@@ -16,6 +17,7 @@ public class JSFileData {
         this.latest = new ArrayList<>();
         this.firstScanTimestamp = System.currentTimeMillis();
         this.lastScanTimestamp = System.currentTimeMillis();
+        this.status = "New";
     }
 
     // Getters and setters
@@ -31,5 +33,13 @@ public class JSFileData {
 
     public void setLastScanTimestamp(long lastScanTimestamp) {
         this.lastScanTimestamp = lastScanTimestamp;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
     }
 }

@@ -40,15 +40,30 @@ public class JSFileTableModel extends AbstractTableModel {
     }
 
     @Override
+    public boolean isCellEditable(int rowIndex, int columnIndex) {
+        return columnIndex == 3;
+    }
+
+    @Override
+    public void setValueAt(Object aValue, int rowIndex, int columnIndex) {
+        if (columnIndex == 3) {
+            Object rowObject = getRow(rowIndex);
+            if (rowObject instanceof JSFileRow) {
+                ((JSFileRow) rowObject).getJsFileData().setStatus((String) aValue);
+            }
+        }
+    }
+
+    @Override
     public Object getValueAt(int rowIndex, int columnIndex) {
         Object rowObject = getRow(rowIndex);
         if (rowObject instanceof JSFileRow) {
             JSFileRow jsFileRow = (JSFileRow) rowObject;
             switch (columnIndex) {
                 case 0: return rowIndex + 1;
-                case 1: return (jsFileRow.isExpanded() ? "▼ " : "▶ ") + jsFileRow.getJsFileData().getJsFileUrl();
+                case 1: return (jsFileRow.isExpanded() ? "▼ " : "") + jsFileRow.getJsFileData().getJsFileUrl();
                 case 2: return "[" + (jsFileRow.getJsFileData().getFirstFinding().size() + jsFileRow.getJsFileData().getLatest().size()) + " total]";
-                case 3: return "Complete";
+                case 3: return jsFileRow.getJsFileData().getStatus();
             }
         } else if (rowObject instanceof CategoryRow) {
             CategoryRow categoryRow = (CategoryRow) rowObject;
