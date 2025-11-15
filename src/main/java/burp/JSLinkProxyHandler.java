@@ -15,9 +15,9 @@ public class JSLinkProxyHandler implements ProxyResponseHandler {
 
     private final MontoyaApi api;
     private final ConcurrentHashMap<String, List<Endpoint>> data;
-    private final TreeTableModel tableModel;
+    private final JSFileTableModel tableModel;
 
-    public JSLinkProxyHandler(MontoyaApi api, ConcurrentHashMap<String, List<Endpoint>> data, TreeTableModel tableModel) {
+    public JSLinkProxyHandler(MontoyaApi api, ConcurrentHashMap<String, List<Endpoint>> data, JSFileTableModel tableModel) {
         this.api = api;
         this.data = data;
         this.tableModel = tableModel;
@@ -65,8 +65,7 @@ public class JSLinkProxyHandler implements ProxyResponseHandler {
                 List<Endpoint> endpoints = LinkParser.findEndpoints(body);
 
                 if (!endpoints.isEmpty()) {
-                    data.put(url, endpoints);
-                    SwingUtilities.invokeLater(() -> tableModel.addRow(url, endpoints));
+                    SwingUtilities.invokeLater(() -> tableModel.addJSFile(url, endpoints));
                     api.logging().logToOutput("Processing JS file: " + url + " (size: " + body.length() + " bytes)");
                 }
             }

@@ -6,30 +6,24 @@ import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class JSFileTableModel extends AbstractTableModel {
-    private final List<ParentRow> parentRows;
-    private final String[] columnNames = {"", "JS File URL", "Endpoints", "Status"};
+
     private final ConcurrentHashMap<String, List<Endpoint>> data;
+    private final List<String> jsFiles;
+    private final String[] columnNames = {"JS File URL", "Endpoints"};
 
     public JSFileTableModel(ConcurrentHashMap<String, List<Endpoint>> data) {
         this.data = data;
-        this.parentRows = new ArrayList<>();
-        updateRows();
-    }
-
-    public void updateRows() {
-        parentRows.clear();
-        data.forEach((url, endpoints) -> parentRows.add(new ParentRow(url, endpoints)));
-        fireTableDataChanged();
+        this.jsFiles = new ArrayList<>(data.keySet());
     }
 
     @Override
     public int getRowCount() {
-        return parentRows.size();
+        return jsFiles.size();
     }
 
     @Override
     public int getColumnCount() {
-        return columnNames.length;
+        return 2;
     }
 
     @Override
@@ -39,20 +33,33 @@ public class JSFileTableModel extends AbstractTableModel {
 
     @Override
     public Object getValueAt(int rowIndex, int columnIndex) {
-        ParentRow parentRow = getParentRow(rowIndex);
+        String jsFileUrl = jsFiles.get(rowIndex);
+
         switch (columnIndex) {
-            case 0: return "▶";
-            case 1: return parentRow.getJsFileUrl();
-            case 2: return "[" + parentRow.getEndpointCount() + " endpoints]";
-            case 3: return "Complete";
+            case 0: return jsFileUrl;
+            case 1: return "[" + data.get(jsFileUrl).size() + " endpoints]";
+            default: return "";
         }
-        return null;
     }
 
-    public ParentRow getParentRow(int rowIndex) {
-        if (rowIndex >= 0 && rowIndex < parentRows.size()) {
-            return parentRows.get(rowIndex);
+    public void addJSFile(String jsFileUrl, List<Endpoint> endpoints) {
+        if (!jsFiles.contains(jsFileUrl)) {
+            jsFiles.add(jsFileUrl);
+            data.put(jsFileUrl, endpoints);
+            fireTableRowsInserted(jsFiles.size() - 1, jsFiles.size() - 1);
+        } else {
+            // Update existing
+            int index = jsFiles.indexOf(jsFileUrl);
+            data.put(jsFileUrl, endpoints);
+            fireTableRowsUpdated(index, index);
         }
-        return null;
+    }
+
+    public String getJSFileUrl(int row) {
+        return jsFiles.get(row);
+    }
+
+    public List<Endpoint> getEndpoints(String jsFileUrl) {
+        return data.get(jsFileUrl);
     }
 }
