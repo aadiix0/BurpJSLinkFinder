@@ -10,14 +10,15 @@ public class BurpExtender implements BurpExtension {
     public void initialize(MontoyaApi api) {
         api.extension().setName("NewJSLink Finder");
 
-        ConcurrentHashMap<String, List<Endpoint>> currentData = new ConcurrentHashMap<>();
+        DataPersistence dataPersistence = new DataPersistence(api);
+        Map<String, JSFileData> allJSFiles = dataPersistence.loadData();
 
-        MainTab mainTab = new MainTab(api, currentData);
+        MainTab mainTab = new MainTab(api, allJSFiles);
 
         api.userInterface().registerSuiteTab("JSLink Finder", mainTab.getComponent());
 
         JSFileTableModel tableModel = mainTab.getTableModel();
-        api.proxy().registerResponseHandler(new JSLinkProxyHandler(api, currentData, tableModel));
+        api.proxy().registerResponseHandler(new JSLinkProxyHandler(api, allJSFiles, tableModel, dataPersistence));
 
         api.logging().logToOutput("NewJSLink Finder loaded successfully.");
     }

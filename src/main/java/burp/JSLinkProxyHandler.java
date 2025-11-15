@@ -8,19 +8,22 @@ import burp.api.montoya.proxy.http.InterceptedResponse;
 import burp.api.montoya.http.message.HttpHeader;
 import burp.api.montoya.http.message.responses.HttpResponse;
 import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Map;
+import java.util.stream.Collectors;
 import javax.swing.SwingUtilities;
 
 public class JSLinkProxyHandler implements ProxyResponseHandler {
 
     private final MontoyaApi api;
-    private final ConcurrentHashMap<String, List<Endpoint>> data;
+    private final Map<String, JSFileData> allJSFiles;
     private final JSFileTableModel tableModel;
+    private final DataPersistence dataPersistence;
 
-    public JSLinkProxyHandler(MontoyaApi api, ConcurrentHashMap<String, List<Endpoint>> data, JSFileTableModel tableModel) {
+    public JSLinkProxyHandler(MontoyaApi api, Map<String, JSFileData> allJSFiles, JSFileTableModel tableModel, DataPersistence dataPersistence) {
         this.api = api;
-        this.data = data;
+        this.allJSFiles = allJSFiles;
         this.tableModel = tableModel;
+        this.dataPersistence = dataPersistence;
     }
 
     @Override
@@ -33,46 +36,42 @@ public class JSLinkProxyHandler implements ProxyResponseHandler {
             String contentType = getHeaderValue(response.headers(), "Content-Type");
 
             boolean isJavaScript = false;
-
             if (contentType != null) {
-                String lowerContentType = contentType.toLowerCase();
-                isJavaScript = lowerContentType.contains("javascript") ||
-                              lowerContentType.contains("application/javascript") ||
-                              lowerContentType.contains("text/javascript");
+                isJavaScript = contentType.toLowerCase().contains("javascript");
             }
-
             if (!isJavaScript && url != null) {
                 isJavaScript = url.toLowerCase().endsWith(".js");
             }
 
-            if (isJavaScript && url != null) {
-                String lowerUrl = url.toLowerCase();
-                String[] excludeList = {"jquery", "google-analytics", "gpt.js",
-                                       "modernizr", "gtm", "fbevents"};
-
-                for (String exclude : excludeList) {
-                    if (lowerUrl.contains(exclude)) {
-                        isJavaScript = false;
-                        break;
-                    }
-                }
-            }
-
             if (isJavaScript) {
-                api.logging().logToOutput("JS file detected: " + url);
-
                 String body = response.bodyToString();
-                List<Endpoint> endpoints = LinkParser.findEndpoints(body);
+                List<String> currentEndpoints = LinkParser.findEndpoints(body).stream()
+                        .map(Endpoint::getUrl)
+                        .collect(Collectors.toList());
 
-                if (!endpoints.isEmpty()) {
-                    SwingUtilities.invokeLater(() -> tableModel.addJSFile(url, endpoints));
-                    api.logging().logToOutput("Processing JS file: " + url + " (size: " + body.length() + " bytes)");
+                if (allJSFiles.containsKey(url)) {
+                    // Existing file
+                    JSFileData jsFileData = allJSFiles.get(url);
+                    List<String> firstFinding = jsFileData.getFirstFinding();
+                    List<String> newEndpoints = currentEndpoints.stream()
+                            .filter(e -> !firstFinding.contains(e))
+                            .collect(Collectors.toList());
+
+                    if (!newEndpoints.isEmpty()) {
+                        jsFileData.getLatest().addAll(newEndpoints);
+                        jsFileData.setLastScanTimestamp(System.currentTimeMillis());
+                    }
+                } else {
+                    // New file
+                    allJSFiles.put(url, new JSFileData(url, currentEndpoints));
                 }
+
+                dataPersistence.saveData(allJSFiles);
+                SwingUtilities.invokeLater(tableModel::updateRows);
             }
 
         } catch (Exception e) {
             api.logging().logToError("Error processing response: " + e.getMessage());
-            e.printStackTrace(new java.io.PrintWriter(api.logging().error()));
         }
 
         return ProxyResponseReceivedAction.continueWith(interceptedResponse);

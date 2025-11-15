@@ -3,27 +3,35 @@ package burp;
 import javax.swing.table.AbstractTableModel;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Map;
 
 public class JSFileTableModel extends AbstractTableModel {
+    private final List<Object> rows;
+    private final String[] columnNames = {"", "File / Category", "Count", ""};
+    private final Map<String, JSFileData> allJSFiles;
 
-    private final ConcurrentHashMap<String, List<Endpoint>> data;
-    private final List<String> jsFiles;
-    private final String[] columnNames = {"JS File URL", "Endpoints"};
+    public JSFileTableModel(Map<String, JSFileData> allJSFiles) {
+        this.allJSFiles = allJSFiles;
+        this.rows = new ArrayList<>();
+        updateRows();
+    }
 
-    public JSFileTableModel(ConcurrentHashMap<String, List<Endpoint>> data) {
-        this.data = data;
-        this.jsFiles = new ArrayList<>(data.keySet());
+    public void updateRows() {
+        rows.clear();
+        allJSFiles.values().forEach(jsFileData -> {
+            rows.add(new JSFileRow(jsFileData));
+        });
+        fireTableDataChanged();
     }
 
     @Override
     public int getRowCount() {
-        return jsFiles.size();
+        return rows.size();
     }
 
     @Override
     public int getColumnCount() {
-        return 2;
+        return columnNames.length;
     }
 
     @Override
@@ -33,33 +41,46 @@ public class JSFileTableModel extends AbstractTableModel {
 
     @Override
     public Object getValueAt(int rowIndex, int columnIndex) {
-        String jsFileUrl = jsFiles.get(rowIndex);
-
-        switch (columnIndex) {
-            case 0: return jsFileUrl;
-            case 1: return "[" + data.get(jsFileUrl).size() + " endpoints]";
-            default: return "";
+        Object rowObject = getRow(rowIndex);
+        if (rowObject instanceof JSFileRow) {
+            JSFileRow jsFileRow = (JSFileRow) rowObject;
+            switch (columnIndex) {
+                case 0: return jsFileRow.isExpanded() ? "▼" : "▶";
+                case 1: return jsFileRow.getJsFileData().getJsFileUrl();
+                case 2: return "[" + (jsFileRow.getJsFileData().getFirstFinding().size() + jsFileRow.getJsFileData().getLatest().size()) + " total]";
+                case 3: return "";
+            }
+        } else if (rowObject instanceof CategoryRow) {
+            CategoryRow categoryRow = (CategoryRow) rowObject;
+            switch (columnIndex) {
+                case 0: return "  ▶";
+                case 1: return "[+] " + categoryRow.getCategoryName();
+                case 2: return "[" + categoryRow.getEndpointCount() + " endpoints]";
+                case 3: return "";
+            }
         }
+        return "";
     }
 
-    public void addJSFile(String jsFileUrl, List<Endpoint> endpoints) {
-        if (!jsFiles.contains(jsFileUrl)) {
-            jsFiles.add(jsFileUrl);
-            data.put(jsFileUrl, endpoints);
-            fireTableRowsInserted(jsFiles.size() - 1, jsFiles.size() - 1);
-        } else {
-            // Update existing
-            int index = jsFiles.indexOf(jsFileUrl);
-            data.put(jsFileUrl, endpoints);
-            fireTableRowsUpdated(index, index);
+    public Object getRow(int rowIndex) {
+        if (rowIndex >= 0 && rowIndex < rows.size()) {
+            return rows.get(rowIndex);
         }
+        return null;
     }
 
-    public String getJSFileUrl(int row) {
-        return jsFiles.get(row);
-    }
+    public void toggleRow(int rowIndex) {
+        Object rowObject = getRow(rowIndex);
+        if (rowObject instanceof JSFileRow) {
+            JSFileRow jsFileRow = (JSFileRow) rowObject;
+            jsFileRow.setExpanded(!jsFileRow.isExpanded());
 
-    public List<Endpoint> getEndpoints(String jsFileUrl) {
-        return data.get(jsFileUrl);
+            if (jsFileRow.isExpanded()) {
+                rows.addAll(rowIndex + 1, jsFileRow.getChildren());
+            } else {
+                rows.removeAll(jsFileRow.getChildren());
+            }
+            fireTableDataChanged();
+        }
     }
 }

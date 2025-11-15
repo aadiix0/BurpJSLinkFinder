@@ -4,52 +4,57 @@ import burp.api.montoya.MontoyaApi;
 import javax.swing.*;
 import java.awt.*;
 import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Map;
 
 public class MainTab {
 
     private final MontoyaApi api;
-    private final ConcurrentHashMap<String, List<Endpoint>> currentData;
+    private final Map<String, JSFileData> allJSFiles;
     private final JSFileTableModel jsFileTableModel;
     private final JTextArea endpointsTextArea;
     private final JTable jsFileTable;
 
-    public MainTab(MontoyaApi api, ConcurrentHashMap<String, List<Endpoint>> currentData) {
+    public MainTab(MontoyaApi api, Map<String, JSFileData> allJSFiles) {
         this.api = api;
-        this.currentData = currentData;
-        this.jsFileTableModel = new JSFileTableModel(currentData);
+        this.allJSFiles = allJSFiles;
+        this.jsFileTableModel = new JSFileTableModel(allJSFiles);
 
-        // Create table for JS files
         jsFileTable = new JTable(jsFileTableModel);
         jsFileTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        JScrollPane leftScrollPane = new JScrollPane(jsFileTable);
 
-        // Create text area for endpoints
         endpointsTextArea = new JTextArea();
         endpointsTextArea.setEditable(false);
         endpointsTextArea.setFont(new Font("Consolas", Font.PLAIN, 12));
-        JScrollPane rightScrollPane = new JScrollPane(endpointsTextArea);
 
-        // Add selection listener
         jsFileTable.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) {
                 int selectedRow = jsFileTable.getSelectedRow();
                 if (selectedRow >= 0) {
-                    String jsFileUrl = jsFileTableModel.getJSFileUrl(selectedRow);
-                    List<Endpoint> endpoints = jsFileTableModel.getEndpoints(jsFileUrl);
-                    updateRightPanel(jsFileUrl, endpoints);
+                    Object rowObject = jsFileTableModel.getRow(selectedRow);
+                    if (rowObject instanceof CategoryRow) {
+                        updateRightPanel((CategoryRow) rowObject);
+                    }
+                }
+            }
+        });
+
+        jsFileTable.addMouseListener(new java.awt.event.MouseAdapter() {
+            public void mouseClicked(java.awt.event.MouseEvent evt) {
+                int row = jsFileTable.rowAtPoint(evt.getPoint());
+                if (row >= 0 && jsFileTable.columnAtPoint(evt.getPoint()) == 0) {
+                    jsFileTableModel.toggleRow(row);
                 }
             }
         });
     }
 
-    private void updateRightPanel(String jsFileUrl, List<Endpoint> endpoints) {
+    private void updateRightPanel(CategoryRow categoryRow) {
         StringBuilder sb = new StringBuilder();
-        sb.append("Endpoints from: ").append(jsFileUrl).append("\n");
-        sb.append("Total: ").append(endpoints.size()).append(" endpoints\n\n");
+        sb.append("Category: ").append(categoryRow.getCategoryName()).append("\n");
+        sb.append("Total: ").append(categoryRow.getEndpointCount()).append(" endpoints\n\n");
 
-        for (Endpoint endpoint : endpoints) {
-            sb.append(endpoint.getUrl()).append("\n");
+        for (String endpoint : categoryRow.getEndpoints()) {
+            sb.append(endpoint).append("\n");
         }
 
         endpointsTextArea.setText(sb.toString());
@@ -63,7 +68,13 @@ public class MainTab {
             new JScrollPane(endpointsTextArea)
         );
         splitPane.setDividerLocation(0.4);
-        return splitPane;
+
+        JPanel mainPanel = new JPanel(new BorderLayout());
+        mainPanel.add(splitPane, BorderLayout.CENTER);
+
+        // Add other controls like checkboxes or buttons here if needed
+
+        return mainPanel;
     }
 
     public JSFileTableModel getTableModel() {
