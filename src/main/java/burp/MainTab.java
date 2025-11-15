@@ -2,8 +2,10 @@ package burp;
 
 import burp.api.montoya.MontoyaApi;
 import javax.swing.*;
+import javax.swing.table.TableRowSorter;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
+import java.util.Comparator;
 import java.awt.event.MouseEvent;
 import java.text.SimpleDateFormat;
 import java.util.Date;
