@@ -7,7 +7,7 @@ import java.util.Map;
 
 public class JSFileTableModel extends AbstractTableModel {
     private final List<Object> rows;
-    private final String[] columnNames = {"", "File / Category", "Count", ""};
+    private final String[] columnNames = {"#", "File / Category", "Count", "Status"};
     private final Map<String, JSFileData> allJSFiles;
 
     public JSFileTableModel(Map<String, JSFileData> allJSFiles) {
@@ -45,17 +45,17 @@ public class JSFileTableModel extends AbstractTableModel {
         if (rowObject instanceof JSFileRow) {
             JSFileRow jsFileRow = (JSFileRow) rowObject;
             switch (columnIndex) {
-                case 0: return jsFileRow.isExpanded() ? "▼" : "▶";
-                case 1: return jsFileRow.getJsFileData().getJsFileUrl();
+                case 0: return rowIndex + 1;
+                case 1: return (jsFileRow.isExpanded() ? "▼ " : "▶ ") + jsFileRow.getJsFileData().getJsFileUrl();
                 case 2: return "[" + (jsFileRow.getJsFileData().getFirstFinding().size() + jsFileRow.getJsFileData().getLatest().size()) + " total]";
-                case 3: return "";
+                case 3: return "Complete";
             }
         } else if (rowObject instanceof CategoryRow) {
             CategoryRow categoryRow = (CategoryRow) rowObject;
             switch (columnIndex) {
-                case 0: return "  ▶";
-                case 1: return "[+] " + categoryRow.getCategoryName();
-                case 2: return "[" + categoryRow.getEndpointCount() + " endpoints]";
+                case 0: return "";
+                case 1: return "    [+] " + categoryRow.getCategoryName() + " [" + categoryRow.getEndpointCount() + " endpoints]";
+                case 2:
                 case 3: return "";
             }
         }
