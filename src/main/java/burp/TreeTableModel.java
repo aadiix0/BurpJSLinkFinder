@@ -8,21 +8,32 @@ import java.util.concurrent.ConcurrentHashMap;
 public class TreeTableModel extends AbstractTableModel {
     private final List<Row> rows;
     private final String[] columnNames = {"", "JS File URL / Endpoint", "Count/Type", "Status"};
-    private final ConcurrentHashMap<String, List<Endpoint>> data;
+    private final ConcurrentHashMap<String, List<Endpoint>> currentData;
+    private final ConcurrentHashMap<String, List<Endpoint>> historicData;
 
-    public TreeTableModel(ConcurrentHashMap<String, List<Endpoint>> data) {
-        this.data = data;
+    public TreeTableModel(ConcurrentHashMap<String, List<Endpoint>> currentData, ConcurrentHashMap<String, List<Endpoint>> historicData) {
+        this.currentData = currentData;
+        this.historicData = historicData;
         this.rows = new ArrayList<>();
-        updateRows();
+        rebuildRows();
     }
 
-    public void updateRows() {
+    private void rebuildRows() {
         rows.clear();
-        data.forEach((url, endpoints) -> {
+        currentData.forEach((url, endpoints) -> {
             ParentRow parentRow = new ParentRow(url, endpoints);
             rows.add(parentRow);
         });
         fireTableDataChanged();
+    }
+
+    public void addRow(String jsFileUrl, List<Endpoint> endpoints) {
+        currentData.put(jsFileUrl, endpoints);
+
+        ParentRow parentRow = new ParentRow(jsFileUrl, endpoints);
+        rows.add(parentRow);
+
+        fireTableRowsInserted(rows.size() - 1, rows.size() - 1);
     }
 
     public void toggleRow(int rowIndex) {
