@@ -5,17 +5,13 @@ import java.awt.*;
 import java.awt.datatransfer.StringSelection;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
-import java.io.File;
-import java.io.PrintWriter;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class MainTab extends JPanel {
-    private JTable table;
-    private TreeTableModel tableModel;
-    private JTextArea endpointTextArea;
+    private JTable jsFileTable;
+    private JSFileTableModel tableModel;
+    private JTextArea endpointsTextArea;
     private final ConcurrentHashMap<String, List<Endpoint>> currentData;
     private final ConcurrentHashMap<String, List<Endpoint>> historicData;
     private JCheckBox showHistoricCheckbox;
@@ -29,38 +25,26 @@ public class MainTab extends JPanel {
     public void initialize() {
         showHistoricCheckbox = new JCheckBox("Show Historic Endpoints");
 
-        tableModel = new TreeTableModel(currentData, historicData);
-        table = new JTable(tableModel);
-        table.getSelectionModel().addListSelectionListener(e -> {
+        tableModel = new JSFileTableModel(currentData);
+        jsFileTable = new JTable(tableModel);
+        jsFileTable.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) {
-                int selectedRow = table.getSelectedRow();
+                int selectedRow = jsFileTable.getSelectedRow();
                 if (selectedRow != -1) {
-                    Row row = tableModel.getRow(selectedRow);
-                    if (row instanceof ParentRow) {
-                        updateEndpointTextArea((ParentRow) row);
-                    }
+                    ParentRow parentRow = tableModel.getParentRow(selectedRow);
+                    updateRightPanel(parentRow);
                 }
             }
         });
 
-        table.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                int row = table.rowAtPoint(e.getPoint());
-                if (row >= 0 && table.columnAtPoint(e.getPoint()) == 0) {
-                    tableModel.toggleRow(row);
-                }
-            }
-        });
-
-        endpointTextArea = new JTextArea();
-        endpointTextArea.setEditable(false);
-        endpointTextArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
-        endpointTextArea.addKeyListener(new KeyAdapter() {
+        endpointsTextArea = new JTextArea();
+        endpointsTextArea.setEditable(false);
+        endpointsTextArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
+        endpointsTextArea.addKeyListener(new KeyAdapter() {
             @Override
             public void keyPressed(KeyEvent e) {
                 if (e.isControlDown() && e.getKeyCode() == KeyEvent.VK_C) {
-                    String selectedText = endpointTextArea.getSelectedText();
+                    String selectedText = endpointsTextArea.getSelectedText();
                     if (selectedText != null && !selectedText.isEmpty()) {
                         copyToClipboard(selectedText);
                     }
@@ -69,7 +53,7 @@ public class MainTab extends JPanel {
         });
 
         JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT,
-                new JScrollPane(table), new JScrollPane(endpointTextArea));
+                new JScrollPane(jsFileTable), new JScrollPane(endpointsTextArea));
         splitPane.setDividerLocation(0.4);
 
         add(showHistoricCheckbox, BorderLayout.NORTH);
@@ -83,19 +67,19 @@ public class MainTab extends JPanel {
         add(buttonPanel, BorderLayout.SOUTH);
     }
 
-    public TreeTableModel getTableModel() {
+    public JSFileTableModel getTableModel() {
         return tableModel;
     }
 
-    private void updateEndpointTextArea(ParentRow parentRow) {
+    private void updateRightPanel(ParentRow parentRow) {
         StringBuilder sb = new StringBuilder();
         sb.append("Endpoints from: ").append(parentRow.getJsFileUrl()).append("\n");
         sb.append("Total: ").append(parentRow.getEndpointCount()).append(" endpoints\n\n");
         for (Endpoint endpoint : parentRow.getEndpoints()) {
             sb.append(endpoint.getUrl()).append("\n");
         }
-        endpointTextArea.setText(sb.toString());
-        endpointTextArea.setCaretPosition(0); // Scroll to top
+        endpointsTextArea.setText(sb.toString());
+        endpointsTextArea.setCaretPosition(0);
     }
 
     private void copyToClipboard(String text) {
