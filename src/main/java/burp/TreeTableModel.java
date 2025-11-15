@@ -37,7 +37,7 @@ public class TreeTableModel extends AbstractTableModel {
                     rows.add(i++, new EndpointRow(endpoint.getUrl(), endpoint.getType()));
                 }
             } else {
-                rows.removeIf(r -> r instanceof EndpointRow && ((EndpointRow) r).getEndpoint().startsWith(parentRow.getJsFileUrl())));
+                rows.removeIf(r -> r instanceof EndpointRow && ((EndpointRow) r).getEndpoint().startsWith(parentRow.getJsFileUrl()));
             }
             fireTableDataChanged();
         }
