@@ -3,6 +3,8 @@ package burp;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.datatransfer.StringSelection;
+import java.awt.event.KeyAdapter;
+import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.File;
@@ -12,7 +14,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class MainTab extends JPanel {
     private JTable table;
-    private final TreeTableModel tableModel;
+    private TreeTableModel tableModel;
+    private JTextArea endpointTextArea;
     private final ConcurrentHashMap<String, List<Endpoint>> currentData;
     private final ConcurrentHashMap<String, List<Endpoint>> historicData;
     private JCheckBox showHistoricCheckbox;
@@ -20,109 +23,49 @@ public class MainTab extends JPanel {
     public MainTab(ConcurrentHashMap<String, List<Endpoint>> currentData, ConcurrentHashMap<String, List<Endpoint>> historicData) {
         this.currentData = currentData;
         this.historicData = historicData;
-        this.tableModel = new TreeTableModel(currentData, historicData);
         setLayout(new BorderLayout());
     }
 
     public void initialize() {
         showHistoricCheckbox = new JCheckBox("Show Historic Endpoints");
-        showHistoricCheckbox.addActionListener(e -> {
-            tableModel.setShowHistoric(showHistoricCheckbox.isSelected());
-            tableModel.fireTableDataChanged();
-        });
-        add(showHistoricCheckbox, BorderLayout.NORTH);
 
+        tableModel = new TreeTableModel(currentData, historicData);
         table = new JTable(tableModel);
-        table.getColumnModel().getColumn(0).setCellRenderer(new TreeCellRenderer());
-        table.getColumnModel().getColumn(0).setPreferredWidth(20);
-
-        // Enable text selection within cells
-        table.setDefaultEditor(Object.class, new DefaultCellEditor(new JTextField()) {
-            @Override
-            public Component getTableCellEditorComponent(JTable table, Object value,
-                    boolean isSelected, int row, int column) {
-                JTextField textField = (JTextField) super.getTableCellEditorComponent(
-                    table, value, isSelected, row, column);
-                textField.setEditable(false);
-                return textField;
-            }
-        });
-        table.setSurrendersFocusOnKeystroke(true);
-        table.putClientProperty("JTable.autoStartsEdit", Boolean.TRUE);
-        DefaultCellEditor editor = (DefaultCellEditor) table.getDefaultEditor(Object.class);
-        editor.setClickCountToStart(1);
-
-        // Add KeyListener for Ctrl+C
-        table.addKeyListener(new java.awt.event.KeyAdapter() {
-            @Override
-            public void keyPressed(java.awt.event.KeyEvent e) {
-                if (e.isControlDown() && e.getKeyCode() == java.awt.event.KeyEvent.VK_C) {
-                    Component editor = table.getEditorComponent();
-                    if (editor instanceof JTextField) {
-                        JTextField field = (JTextField) editor;
-                        String selectedText = field.getSelectedText();
-                        if (selectedText != null && !selectedText.isEmpty()) {
-                            copyToClipboard(selectedText);
-                            return;
-                        }
-                    }
-                    copySelectedRowToClipboard();
+        table.getSelectionModel().addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) {
+                int selectedRow = table.getSelectedRow();
+                if (selectedRow != -1) {
+                    ParentRow parentRow = tableModel.getParentRow(selectedRow);
+                    updateEndpointTextArea(parentRow);
                 }
             }
         });
 
-        // Add MouseListener for expand/collapse and right-click
-        table.addMouseListener(new MouseAdapter() {
+        endpointTextArea = new JTextArea();
+        endpointTextArea.setEditable(false);
+        endpointTextArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
+        endpointTextArea.addKeyListener(new KeyAdapter() {
             @Override
-            public void mouseClicked(MouseEvent e) {
-                int row = table.rowAtPoint(e.getPoint());
-                if (row >= 0) {
-                    Row rowObject = tableModel.getRow(row);
-                    if (rowObject instanceof ParentRow || rowObject instanceof CategoryRow) {
-                        rowObject.setExpanded(!rowObject.isExpanded());
-                        tableModel.fireTableDataChanged();
+            public void keyPressed(KeyEvent e) {
+                if (e.isControlDown() && e.getKeyCode() == KeyEvent.VK_C) {
+                    String selectedText = endpointTextArea.getSelectedText();
+                    if (selectedText != null && !selectedText.isEmpty()) {
+                        copyToClipboard(selectedText);
                     }
                 }
             }
-
-            @Override
-            public void mousePressed(MouseEvent e) {
-                if (e.isPopupTrigger()) {
-                    showPopup(e);
-                }
-            }
-
-            @Override
-            public void mouseReleased(MouseEvent e) {
-                if (e.isPopupTrigger()) {
-                    showPopup(e);
-                }
-            }
-
-            private void showPopup(MouseEvent e) {
-                int row = table.rowAtPoint(e.getPoint());
-                table.setRowSelectionInterval(row, row);
-                JPopupMenu popupMenu = new JPopupMenu();
-                JMenuItem copyItem = new JMenuItem("Copy URL");
-                copyItem.addActionListener(l -> copySelectedRowToClipboard());
-                popupMenu.add(copyItem);
-                popupMenu.show(e.getComponent(), e.getX(), e.getY());
-            }
         });
 
-        add(new JScrollPane(table), BorderLayout.CENTER);
+        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT,
+                new JScrollPane(table), new JScrollPane(endpointTextArea));
+        splitPane.setDividerLocation(0.4);
+
+        add(showHistoricCheckbox, BorderLayout.NORTH);
+        add(splitPane, BorderLayout.CENTER);
 
         JPanel buttonPanel = new JPanel();
         JButton clearButton = new JButton("Clear");
-        clearButton.addActionListener(e -> {
-            currentData.clear();
-            if (showHistoricCheckbox.isSelected()) {
-                historicData.clear();
-            }
-            tableModel.fireTableDataChanged();
-        });
         JButton exportButton = new JButton("Export");
-        exportButton.addActionListener(e -> exportData());
         buttonPanel.add(clearButton);
         buttonPanel.add(exportButton);
         add(buttonPanel, BorderLayout.SOUTH);
@@ -132,51 +75,15 @@ public class MainTab extends JPanel {
         return tableModel;
     }
 
-    private void exportData() {
-        JFileChooser fileChooser = new JFileChooser();
-        if (fileChooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
-            File file = fileChooser.getSelectedFile();
-            try (PrintWriter writer = new PrintWriter(file)) {
-                writer.println("Current Endpoints:");
-                for (String url : currentData.keySet()) {
-                    writer.println("JS File: " + url);
-                    for (Endpoint endpoint : currentData.get(url)) {
-                        writer.println("  - " + endpoint.getUrl() + " (" + endpoint.getType() + ")");
-                    }
-                }
-                if (showHistoricCheckbox.isSelected()) {
-                    writer.println("\nHistoric Endpoints:");
-                    for (String url : historicData.keySet()) {
-                        writer.println("JS File: " + url);
-                        for (Endpoint endpoint : historicData.get(url)) {
-                            writer.println("  - " + endpoint.getUrl() + " (" + endpoint.getType() + ")");
-                        }
-                    }
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
+    private void updateEndpointTextArea(ParentRow parentRow) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Endpoints from: ").append(parentRow.getJsFileUrl()).append("\n");
+        sb.append("Total: ").append(parentRow.getEndpointCount()).append(" endpoints\n\n");
+        for (Endpoint endpoint : parentRow.getEndpoints()) {
+            sb.append(endpoint.getUrl()).append("\n");
         }
-    }
-
-    private void copySelectedRowToClipboard() {
-        int selectedRow = table.getSelectedRow();
-        if (selectedRow != -1) {
-            Row rowObject = tableModel.getRow(selectedRow);
-            String textToCopy = "";
-            if (rowObject instanceof ParentRow) {
-                textToCopy = ((ParentRow) rowObject).getJsFileUrl();
-            } else if (rowObject instanceof CategoryRow) {
-                StringBuilder sb = new StringBuilder();
-                for (ChildRow child : ((CategoryRow) rowObject).getChildren()) {
-                    sb.append(child.getEndpoint().getUrl()).append("\n");
-                }
-                textToCopy = sb.toString();
-            } else if (rowObject instanceof ChildRow) {
-                textToCopy = ((ChildRow) rowObject).getEndpoint().getUrl();
-            }
-            copyToClipboard(textToCopy);
-        }
+        endpointTextArea.setText(sb.toString());
+        endpointTextArea.setCaretPosition(0); // Scroll to top
     }
 
     private void copyToClipboard(String text) {
