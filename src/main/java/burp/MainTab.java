@@ -14,8 +14,8 @@ public class MainTab {
     private final MontoyaApi api;
     private final Map<String, JSFileData> allJSFiles;
     private final JSFileTableModel jsFileTableModel;
-    private final LineNumberTextArea endpointsTextArea;
-    private final JTable jsFileTable;
+    private LineNumberTextArea endpointsTextArea;
+    private JTable jsFileTable;
     private JScrollPane leftScrollPane;
     private JScrollPane rightScrollPane;
     private JSplitPane splitPane;
