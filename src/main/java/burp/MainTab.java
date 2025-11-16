@@ -11,59 +11,61 @@ import java.util.List;
 import java.util.Map;
 import javax.swing.table.TableRowSorter;
 import java.util.Comparator;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class MainTab {
 
     private final MontoyaApi api;
     private final Map<String, JSFileData> allJSFiles;
     private final JSFileTableModel jsFileTableModel;
-    private final LineNumberTextArea endpointsTextArea;
-    private final JTable jsFileTable;
+    private JTable jsFileTable;
+    private LineNumberTextArea endpointsTextArea;
+    private JScrollPane leftScrollPane;
+    private JScrollPane rightScrollPane;
 
-    public MainTab(MontoyaApi api, Map<String, JSFileData> allJSFiles) {
+    public MainTab(MontoyaApi api, ConcurrentHashMap<String, JSFileData> allJSFiles) {
         this.api = api;
         this.allJSFiles = allJSFiles;
-        this.jsFileTableModel = new JSFileTableModel(allJSFiles);
 
+        try {
+            // Initialize model
+            this.jsFileTableModel = new JSFileTableModel(allJSFiles);
+
+            // Initialize left and right panels
+            initializeLeftPanel();
+            initializeRightPanel();
+
+            api.logging().logToOutput("MainTab initialized successfully");
+
+        } catch (Exception e) {
+            api.logging().logToError("Error in MainTab constructor: " + e.getMessage(), e);
+            throw e;
+        }
+    }
+
+    private void initializeLeftPanel() {
         jsFileTable = new JTable(jsFileTableModel);
+        jsFileTable.setFillsViewportHeight(true);
         jsFileTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
 
         TableRowSorter<javax.swing.table.TableModel> sorter = new TableRowSorter<>(jsFileTable.getModel());
         jsFileTable.setRowSorter(sorter);
 
-        sorter.setComparator(0, new Comparator<Object>() {
-            @Override
-            public int compare(Object o1, Object o2) {
-                if (o1 == null || o2 == null) return 0;
-                try {
-                    Integer num1 = (Integer) o1;
-                    Integer num2 = (Integer) o2;
-                    return num1.compareTo(num2);
-                } catch (Exception e) {
-                    return 0;
-                }
+        sorter.setComparator(0, (Comparator<Object>) (o1, o2) -> {
+            if (o1 == null || o2 == null) return 0;
+            try {
+                Integer num1 = (Integer) o1;
+                Integer num2 = (Integer) o2;
+                return num1.compareTo(num2);
+            } catch (Exception e) {
+                return 0;
             }
         });
 
-        sorter.setComparator(2, new Comparator<Object>() {
-            @Override
-            public int compare(Object o1, Object o2) {
-                int num1 = extractNumberFromCount(o1);
-                int num2 = extractNumberFromCount(o2);
-                return Integer.compare(num1, num2);
-            }
-
-            private int extractNumberFromCount(Object obj) {
-                if (obj == null) return 0;
-                String str = obj.toString();
-                try {
-                    str = str.replaceAll("[^0-9]", "");
-                    if (str.isEmpty()) return 0;
-                    return Integer.parseInt(str);
-                } catch (Exception e) {
-                    return 0;
-                }
-            }
+        sorter.setComparator(2, (Comparator<Object>) (o1, o2) -> {
+            int num1 = extractNumberFromCount(o1);
+            int num2 = extractNumberFromCount(o2);
+            return Integer.compare(num1, num2);
         });
 
         jsFileTable.setAutoCreateRowSorter(false);
@@ -76,16 +78,13 @@ public class MainTab {
         jsFileTable.getColumnModel().getColumn(3).setCellEditor(new TagCellEditor());
         jsFileTable.getColumnModel().getColumn(3).setCellRenderer(new TagCellRenderer());
 
-        endpointsTextArea = new LineNumberTextArea();
-
         jsFileTable.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) {
                 int selectedRow = jsFileTable.getSelectedRow();
                 if (selectedRow >= 0) {
                     int modelRow = jsFileTable.convertRowIndexToModel(selectedRow);
                     TableRow rowObject = jsFileTableModel.getRow(modelRow);
-                    if (!rowObject.isParent()) {
-                        // find parent
+                    if (rowObject != null && !rowObject.isParent()) {
                         for (int i = modelRow - 1; i >= 0; i--) {
                             if (jsFileTableModel.getRow(i).isParent()) {
                                 updateRightPanel(rowObject, jsFileTableModel.getRow(i));
@@ -109,6 +108,25 @@ public class MainTab {
                 }
             }
         });
+
+        leftScrollPane = new JScrollPane(jsFileTable);
+    }
+
+    private int extractNumberFromCount(Object obj) {
+        if (obj == null) return 0;
+        String str = obj.toString();
+        try {
+            str = str.replaceAll("[^0-9]", "");
+            if (str.isEmpty()) return 0;
+            return Integer.parseInt(str);
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    private void initializeRightPanel() {
+        endpointsTextArea = new LineNumberTextArea();
+        rightScrollPane = new JScrollPane(endpointsTextArea);
     }
 
     private void updateRightPanel(TableRow categoryRow, TableRow parentRow) {
@@ -131,28 +149,36 @@ public class MainTab {
     }
 
     public Component getComponent() {
-        JSplitPane splitPane = new JSplitPane(
-            JSplitPane.HORIZONTAL_SPLIT,
-            new JScrollPane(jsFileTable),
-            endpointsTextArea
-        );
-        splitPane.setDividerLocation(0.4);
+        try {
+            JSplitPane splitPane = new JSplitPane(
+                JSplitPane.HORIZONTAL_SPLIT,
+                leftScrollPane,
+                rightScrollPane
+            );
+            splitPane.setDividerLocation(400);
+            splitPane.setResizeWeight(0.4);
 
-        JPanel mainPanel = new JPanel(new BorderLayout());
-        mainPanel.add(splitPane, BorderLayout.CENTER);
+            JPanel mainPanel = new JPanel(new BorderLayout());
+            mainPanel.add(splitPane, BorderLayout.CENTER);
 
-        JToggleButton editModeButton = new JToggleButton("Edit Mode");
-        editModeButton.addActionListener(e -> {
-            boolean editMode = editModeButton.isSelected();
-            endpointsTextArea.getTextArea().setEditable(editMode);
-            endpointsTextArea.getTextArea().setBackground(editMode ? Color.WHITE : new Color(245, 245, 245));
-        });
+            JToggleButton editModeButton = new JToggleButton("Edit Mode");
+            editModeButton.addActionListener(e -> {
+                boolean editMode = editModeButton.isSelected();
+                endpointsTextArea.getTextArea().setEditable(editMode);
+                endpointsTextArea.getTextArea().setBackground(editMode ? Color.WHITE : new Color(245, 245, 245));
+            });
 
-        JPanel southPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        southPanel.add(editModeButton);
-        mainPanel.add(southPanel, BorderLayout.SOUTH);
+            JPanel southPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+            southPanel.add(editModeButton);
+            mainPanel.add(southPanel, BorderLayout.SOUTH);
 
-        return mainPanel;
+            mainPanel.revalidate();
+            return mainPanel;
+
+        } catch (Exception e) {
+            api.logging().logToError("Error creating component: " + e.getMessage(), e);
+            return new JLabel("Error loading JSLink Finder");
+        }
     }
 
     public JSFileTableModel getTableModel() {
