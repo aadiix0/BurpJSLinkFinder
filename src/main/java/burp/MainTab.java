@@ -30,7 +30,7 @@ public class MainTab {
 
         try {
             // Initialize model
-            this.jsFileTableModel = new JSFileTableModel(allJSFiles);
+            this.jsFileTableModel = new JSFileTableModel(allJSFiles, api);
 
             // Initialize left and right panels
             initializeLeftPanel();
@@ -100,13 +100,13 @@ public class MainTab {
             }
         );
 
-        // Custom cell editor for Status column (column 3)
+        // Status column editor with dropdown
         String[] statusOptions = {"New", "Working", "Later", "Ignore", "Done"};
         JComboBox<String> statusComboBox = new JComboBox<>(statusOptions);
         DefaultCellEditor statusEditor = new DefaultCellEditor(statusComboBox);
         jsFileTable.getColumnModel().getColumn(3).setCellEditor(statusEditor);
 
-        // Custom cell renderer with colors
+        // Status column renderer with colors
         jsFileTable.getColumnModel().getColumn(3).setCellRenderer(
             new DefaultTableCellRenderer() {
                 @Override
@@ -116,20 +116,20 @@ public class MainTab {
 
                     super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
 
-                    setHorizontalAlignment(CENTER);
                     String status = value != null ? value.toString() : "New";
+                    setHorizontalAlignment(CENTER);
 
                     switch (status) {
                         case "New":
-                            setBackground(new Color(173, 216, 230)); // Light blue
+                            setBackground(new Color(173, 216, 230));
                             setForeground(Color.BLUE);
                             break;
                         case "Working":
-                            setBackground(new Color(255, 255, 224)); // Light yellow
+                            setBackground(new Color(255, 255, 224));
                             setForeground(new Color(184, 134, 11));
                             break;
                         case "Later":
-                            setBackground(new Color(255, 228, 196)); // Bisque
+                            setBackground(new Color(255, 228, 196));
                             setForeground(new Color(255, 140, 0));
                             break;
                         case "Ignore":
@@ -137,7 +137,7 @@ public class MainTab {
                             setForeground(Color.DARK_GRAY);
                             break;
                         case "Done":
-                            setBackground(new Color(144, 238, 144)); // Light green
+                            setBackground(new Color(144, 238, 144));
                             setForeground(new Color(0, 100, 0));
                             break;
                     }
@@ -264,20 +264,29 @@ public class MainTab {
         editModeButton.addActionListener(e -> {
             boolean editMode = editModeButton.isSelected();
 
-            if (endpointsTextArea.getTextArea() != null) {
-                JTextArea textArea = endpointsTextArea.getTextArea();
+            JTextArea textArea = endpointsTextArea.getTextArea();
+            if (textArea != null) {
                 textArea.setEditable(editMode);
 
                 if (editMode) {
-                    textArea.setBackground(new Color(255, 255, 255));
+                    // Edit mode - white background, visible caret
+                    textArea.setBackground(Color.WHITE);
                     textArea.setForeground(Color.BLACK);
+                    textArea.getCaret().setVisible(true);
+                    textArea.getCaret().setSelectionVisible(true);
                 } else {
+                    // Read-only mode - light gray background
                     textArea.setBackground(new Color(245, 245, 245));
                     textArea.setForeground(Color.BLACK);
+                    textArea.getCaret().setVisible(true);
                 }
+            }
 
-                textArea.getCaret().setVisible(true);
-                textArea.setCaretColor(Color.BLACK);
+            // Keep line numbers visible
+            JTextArea lineNumArea = endpointsTextArea.getLineNumberArea();
+            if (lineNumArea != null) {
+                lineNumArea.setBackground(new Color(240, 240, 240));
+                lineNumArea.setForeground(Color.GRAY);
             }
         });
 

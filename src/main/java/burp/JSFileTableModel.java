@@ -1,5 +1,6 @@
 package burp;
 
+import burp.api.montoya.MontoyaApi;
 import javax.swing.table.AbstractTableModel;
 import java.util.ArrayList;
 import java.util.List;
@@ -11,9 +12,11 @@ public class JSFileTableModel extends AbstractTableModel {
     private final List<TableRow> rows;
     private final String[] columnNames = {"#", "File / Category", "Count", "Status"};
     private final Map<String, JSFileData> allJSFilesData;
+    private final MontoyaApi api;
 
-    public JSFileTableModel(Map<String, JSFileData> allJSFilesData) {
+    public JSFileTableModel(Map<String, JSFileData> allJSFilesData, MontoyaApi api) {
         this.allJSFilesData = allJSFilesData;
+        this.api = api;
         this.rows = new ArrayList<>();
         initializeRows();
     }
@@ -30,58 +33,41 @@ public class JSFileTableModel extends AbstractTableModel {
         }
     }
 
-    public void addJSFile(String jsFileUrl, List<Endpoint> newEndpoints) {
-        // Convert Endpoint list to String list
-        List<String> endpointUrls = newEndpoints.stream()
-            .map(Endpoint::getUrl)
-            .collect(Collectors.toList());
-
-        JSFileData jsFileData = allJSFilesData.get(jsFileUrl);
-
-        if (jsFileData == null) {
-            // First time seeing this JS file
-            jsFileData = new JSFileData(jsFileUrl, endpointUrls);
-            jsFileData.setStatus("New");
-            allJSFilesData.put(jsFileUrl, jsFileData);
-
-            // Add new row
-            TableRow newRow = new TableRow(rows.size() + 1, jsFileUrl, endpointUrls.size(), "New");
-            rows.add(newRow);
-            fireTableRowsInserted(rows.size() - 1, rows.size() - 1);
-
-        } else {
-            // JS file seen before - check for new endpoints
-            List<String> firstFinding = jsFileData.getFirstFinding();
-            List<String> latest = jsFileData.getLatest();
-
-            // Find new endpoints not in First Finding or Latest
-            List<String> newLatest = new ArrayList<>();
-            for (String endpointUrl : endpointUrls) {
-                if (!firstFinding.contains(endpointUrl) && !latest.contains(endpointUrl)) {
-                    newLatest.add(endpointUrl);
-                }
-            }
-
-            if (!newLatest.isEmpty()) {
-                // Add to latest
-                latest.addAll(newLatest);
-                jsFileData.setLatest(latest);
-                jsFileData.setStatus("Updated");
-
-                // Update row count
-                for (int i = 0; i < rows.size(); i++) {
-                    TableRow row = rows.get(i);
-                    if (row.isParent() && row.getJsFileUrl().equals(jsFileUrl)) {
-                        // Update total count
-                        int newTotal = firstFinding.size() + latest.size();
-                        row.setCount(newTotal);
-                        row.setStatus("Updated");
-                        fireTableRowsUpdated(i, i);
-                        break;
-                    }
-                }
+    public void addJSFile(String jsFileUrl, List<Endpoint> endpoints) {
+        boolean exists = false;
+        for (TableRow row : rows) {
+            if (row.isParent() && row.getJsFileUrl().equals(jsFileUrl)) {
+                exists = true;
+                break;
             }
         }
+
+        if (!exists) {
+            int rowNum = getNextRowNumber();
+            TableRow newRow = new TableRow(rowNum, jsFileUrl, endpoints.size(), "New");
+            rows.add(newRow);
+
+            List<String> endpointUrls = endpoints.stream()
+                .map(Endpoint::getUrl)
+                .collect(Collectors.toList());
+
+            JSFileData jsData = new JSFileData(jsFileUrl, endpointUrls);
+            allJSFilesData.put(jsFileUrl, jsData);
+
+            fireTableRowsInserted(rows.size() - 1, rows.size() - 1);
+
+            api.logging().logToOutput("Added JS file: " + jsFileUrl + " with " + endpoints.size() + " endpoints");
+        }
+    }
+
+    private int getNextRowNumber() {
+        int maxNum = 0;
+        for (TableRow row : rows) {
+            if (row.isParent() && row.getRowNumber() > maxNum) {
+                maxNum = row.getRowNumber();
+            }
+        }
+        return maxNum + 1;
     }
 
     @Override

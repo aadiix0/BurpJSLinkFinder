@@ -59,4 +59,8 @@ public class LineNumberTextArea extends JPanel {
     public JTextArea getTextArea() {
         return textArea;
     }
+
+    public JTextArea getLineNumberArea() {
+        return lineNumberArea;
+    }
 }
