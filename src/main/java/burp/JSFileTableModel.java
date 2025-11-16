@@ -40,38 +40,21 @@ public class JSFileTableModel extends AbstractTableModel {
     }
 
     @Override
-    public boolean isCellEditable(int rowIndex, int columnIndex) {
-        return columnIndex == 3;
-    }
-
-    @Override
-    public void setValueAt(Object aValue, int rowIndex, int columnIndex) {
-        if (columnIndex == 3) {
-            Object rowObject = getRow(rowIndex);
-            if (rowObject instanceof JSFileRow) {
-                ((JSFileRow) rowObject).getJsFileData().setStatus((String) aValue);
-            }
-        }
-    }
-
-    @Override
     public Object getValueAt(int rowIndex, int columnIndex) {
         Object rowObject = getRow(rowIndex);
         if (rowObject instanceof JSFileRow) {
             JSFileRow jsFileRow = (JSFileRow) rowObject;
             switch (columnIndex) {
                 case 0: return rowIndex + 1;
-                case 1: return (jsFileRow.isExpanded() ? "▼ " : "") + jsFileRow.getJsFileData().getJsFileUrl();
+                case 1: return (jsFileRow.isExpanded() ? "▼ " : "▶ ") + jsFileRow.getJsFileData().getJsFileUrl();
                 case 2: return "[" + (jsFileRow.getJsFileData().getFirstFinding().size() + jsFileRow.getJsFileData().getLatest().size()) + " total]";
                 case 3: return jsFileRow.getJsFileData().getStatus();
             }
         } else if (rowObject instanceof CategoryRow) {
             CategoryRow categoryRow = (CategoryRow) rowObject;
             switch (columnIndex) {
-                case 0: return "";
-                case 1: return "    [+] " + categoryRow.getCategoryName() + " [" + categoryRow.getEndpointCount() + " endpoints]";
-                case 2:
-                case 3: return "";
+                case 1: return "[+] " + categoryRow.getCategoryName() + " [" + categoryRow.getEndpointCount() + " endpoints]";
+                default: return "";
             }
         }
         return "";
@@ -84,16 +67,16 @@ public class JSFileTableModel extends AbstractTableModel {
         return null;
     }
 
-    public void toggleRow(int rowIndex) {
-        Object rowObject = getRow(rowIndex);
+    public void toggleExpansion(int parentIndex) {
+        Object rowObject = getRow(parentIndex);
         if (rowObject instanceof JSFileRow) {
-            JSFileRow jsFileRow = (JSFileRow) rowObject;
-            jsFileRow.setExpanded(!jsFileRow.isExpanded());
+            JSFileRow parent = (JSFileRow) rowObject;
+            parent.setExpanded(!parent.isExpanded());
 
-            if (jsFileRow.isExpanded()) {
-                rows.addAll(rowIndex + 1, jsFileRow.getChildren());
+            if (parent.isExpanded()) {
+                rows.addAll(parentIndex + 1, parent.getChildren());
             } else {
-                rows.removeAll(jsFileRow.getChildren());
+                rows.removeAll(parent.getChildren());
             }
             fireTableDataChanged();
         }
