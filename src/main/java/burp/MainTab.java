@@ -260,33 +260,16 @@ public class MainTab {
 
         panel.add(splitPane, BorderLayout.CENTER);
 
-        JToggleButton editModeButton = new JToggleButton("Edit Mode");
+        JToggleButton editModeButton = new JToggleButton("Edit Mode: OFF");
         editModeButton.addActionListener(e -> {
             boolean editMode = editModeButton.isSelected();
 
-            JTextArea textArea = endpointsTextArea.getTextArea();
-            if (textArea != null) {
-                textArea.setEditable(editMode);
+            endpointsTextArea.setEditMode(editMode);
 
-                if (editMode) {
-                    // Edit mode - white background, visible caret
-                    textArea.setBackground(Color.WHITE);
-                    textArea.setForeground(Color.BLACK);
-                    textArea.getCaret().setVisible(true);
-                    textArea.getCaret().setSelectionVisible(true);
-                } else {
-                    // Read-only mode - light gray background
-                    textArea.setBackground(new Color(245, 245, 245));
-                    textArea.setForeground(Color.BLACK);
-                    textArea.getCaret().setVisible(true);
-                }
-            }
-
-            // Keep line numbers visible
-            JTextArea lineNumArea = endpointsTextArea.getLineNumberArea();
-            if (lineNumArea != null) {
-                lineNumArea.setBackground(new Color(240, 240, 240));
-                lineNumArea.setForeground(Color.GRAY);
+            if (editMode) {
+                editModeButton.setText("Edit Mode: ON");
+            } else {
+                editModeButton.setText("Edit Mode: OFF");
             }
         });
 
