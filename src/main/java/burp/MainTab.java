@@ -9,6 +9,7 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.TableRowSorter;
 import java.util.Comparator;
 import java.util.concurrent.ConcurrentHashMap;
@@ -74,9 +75,77 @@ public class MainTab {
         jsFileTable.getColumnModel().getColumn(1).setPreferredWidth(500);
         jsFileTable.getColumnModel().getColumn(2).setPreferredWidth(100);
         jsFileTable.getColumnModel().getColumn(3).setPreferredWidth(100);
-        jsFileTable.getColumnModel().getColumn(1).setCellRenderer(new FileCategoryRenderer());
-        jsFileTable.getColumnModel().getColumn(3).setCellEditor(new TagCellEditor());
-        jsFileTable.getColumnModel().getColumn(3).setCellRenderer(new TagCellRenderer());
+
+        // Custom renderer for File/Category column
+        jsFileTable.getColumnModel().getColumn(1).setCellRenderer(
+            new DefaultTableCellRenderer() {
+                @Override
+                public Component getTableCellRendererComponent(
+                        JTable table, Object value, boolean isSelected,
+                        boolean hasFocus, int row, int column) {
+
+                    super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+
+                    int modelRow = table.convertRowIndexToModel(row);
+                    TableRow tableRow = jsFileTableModel.getRowData(modelRow);
+
+                    if (tableRow != null && tableRow.isParent()) {
+                        setFont(new Font(getFont().getName(), Font.BOLD, 12));
+                    } else {
+                        setFont(new Font(getFont().getName(), Font.PLAIN, 12));
+                    }
+
+                    return this;
+                }
+            }
+        );
+
+        // Custom cell editor for Status column (column 3)
+        String[] statusOptions = {"New", "Working", "Later", "Ignore", "Done"};
+        JComboBox<String> statusComboBox = new JComboBox<>(statusOptions);
+        DefaultCellEditor statusEditor = new DefaultCellEditor(statusComboBox);
+        jsFileTable.getColumnModel().getColumn(3).setCellEditor(statusEditor);
+
+        // Custom cell renderer with colors
+        jsFileTable.getColumnModel().getColumn(3).setCellRenderer(
+            new DefaultTableCellRenderer() {
+                @Override
+                public Component getTableCellRendererComponent(
+                        JTable table, Object value, boolean isSelected,
+                        boolean hasFocus, int row, int column) {
+
+                    super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+
+                    setHorizontalAlignment(CENTER);
+                    String status = value != null ? value.toString() : "New";
+
+                    switch (status) {
+                        case "New":
+                            setBackground(new Color(173, 216, 230)); // Light blue
+                            setForeground(Color.BLUE);
+                            break;
+                        case "Working":
+                            setBackground(new Color(255, 255, 224)); // Light yellow
+                            setForeground(new Color(184, 134, 11));
+                            break;
+                        case "Later":
+                            setBackground(new Color(255, 228, 196)); // Bisque
+                            setForeground(new Color(255, 140, 0));
+                            break;
+                        case "Ignore":
+                            setBackground(Color.LIGHT_GRAY);
+                            setForeground(Color.DARK_GRAY);
+                            break;
+                        case "Done":
+                            setBackground(new Color(144, 238, 144)); // Light green
+                            setForeground(new Color(0, 100, 0));
+                            break;
+                    }
+
+                    return this;
+                }
+            }
+        );
 
         jsFileTable.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) {
@@ -150,35 +219,109 @@ public class MainTab {
 
     public Component getComponent() {
         try {
-            JSplitPane splitPane = new JSplitPane(
-                JSplitPane.HORIZONTAL_SPLIT,
-                leftScrollPane,
-                rightScrollPane
-            );
-            splitPane.setDividerLocation(400);
-            splitPane.setResizeWeight(0.4);
+            // Create tabbed pane
+            JTabbedPane tabbedPane = new JTabbedPane();
 
-            JPanel mainPanel = new JPanel(new BorderLayout());
-            mainPanel.add(splitPane, BorderLayout.CENTER);
+            // TAB 1: Links (existing functionality)
+            JPanel linksPanel = createLinksPanel();
+            tabbedPane.addTab("Links", linksPanel);
 
-            JToggleButton editModeButton = new JToggleButton("Edit Mode");
-            editModeButton.addActionListener(e -> {
-                boolean editMode = editModeButton.isSelected();
-                endpointsTextArea.getTextArea().setEditable(editMode);
-                endpointsTextArea.getTextArea().setBackground(editMode ? Color.WHITE : new Color(245, 245, 245));
-            });
+            // TAB 2: JS Changes (placeholder)
+            JPanel jsChangesPanel = createJSChangesPanel();
+            tabbedPane.addTab("JS Changes", jsChangesPanel);
 
-            JPanel southPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-            southPanel.add(editModeButton);
-            mainPanel.add(southPanel, BorderLayout.SOUTH);
+            // TAB 3: Blacklist (placeholder)
+            JPanel blacklistPanel = createBlacklistPanel();
+            tabbedPane.addTab("Blacklist", blacklistPanel);
 
-            mainPanel.revalidate();
-            return mainPanel;
+            // TAB 4: Settings (placeholder)
+            JPanel settingsPanel = createSettingsPanel();
+            tabbedPane.addTab("Settings", settingsPanel);
+
+            return tabbedPane;
 
         } catch (Exception e) {
-            api.logging().logToError("Error creating component: " + e.getMessage(), e);
+            api.logging().logToError("Error creating tabbed component: " + e.getMessage(), e);
+            e.printStackTrace();
             return new JLabel("Error loading JSLink Finder");
         }
+    }
+
+    private JPanel createLinksPanel() {
+        JPanel panel = new JPanel(new BorderLayout());
+
+        JSplitPane splitPane = new JSplitPane(
+            JSplitPane.HORIZONTAL_SPLIT,
+            leftScrollPane,
+            rightScrollPane
+        );
+        splitPane.setDividerLocation(400);
+        splitPane.setResizeWeight(0.4);
+
+        panel.add(splitPane, BorderLayout.CENTER);
+
+        JToggleButton editModeButton = new JToggleButton("Edit Mode");
+        editModeButton.addActionListener(e -> {
+            boolean editMode = editModeButton.isSelected();
+
+            if (endpointsTextArea.getTextArea() != null) {
+                JTextArea textArea = endpointsTextArea.getTextArea();
+                textArea.setEditable(editMode);
+
+                if (editMode) {
+                    textArea.setBackground(new Color(255, 255, 255));
+                    textArea.setForeground(Color.BLACK);
+                } else {
+                    textArea.setBackground(new Color(245, 245, 245));
+                    textArea.setForeground(Color.BLACK);
+                }
+
+                textArea.getCaret().setVisible(true);
+                textArea.setCaretColor(Color.BLACK);
+            }
+        });
+
+        JPanel southPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        southPanel.add(editModeButton);
+        panel.add(southPanel, BorderLayout.SOUTH);
+
+        return panel;
+    }
+
+    private JPanel createJSChangesPanel() {
+        JPanel panel = new JPanel(new BorderLayout());
+
+        JLabel label = new JLabel("JS Changes - Coming Soon", SwingConstants.CENTER);
+        label.setFont(new Font("Arial", Font.BOLD, 16));
+        label.setForeground(Color.GRAY);
+
+        panel.add(label, BorderLayout.CENTER);
+
+        return panel;
+    }
+
+    private JPanel createBlacklistPanel() {
+        JPanel panel = new JPanel(new BorderLayout());
+
+        JLabel label = new JLabel("Blacklist - Coming Soon", SwingConstants.CENTER);
+        label.setFont(new Font("Arial", Font.BOLD, 16));
+        label.setForeground(Color.GRAY);
+
+        panel.add(label, BorderLayout.CENTER);
+
+        return panel;
+    }
+
+    private JPanel createSettingsPanel() {
+        JPanel panel = new JPanel(new BorderLayout());
+
+        JLabel label = new JLabel("Settings - Coming Soon", SwingConstants.CENTER);
+        label.setFont(new Font("Arial", Font.BOLD, 16));
+        label.setForeground(Color.GRAY);
+
+        panel.add(label, BorderLayout.CENTER);
+
+        return panel;
     }
 
     public JSFileTableModel getTableModel() {

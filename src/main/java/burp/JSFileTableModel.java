@@ -21,10 +21,13 @@ public class JSFileTableModel extends AbstractTableModel {
     private void initializeRows() {
         rows.clear();
         int rowNum = 1;
-        for (JSFileData jsFileData : allJSFilesData.values()) {
-            rows.add(new TableRow(rowNum++, jsFileData.getJsFileUrl(), jsFileData.getFirstFinding().size() + jsFileData.getLatest().size(), jsFileData.getStatus()));
+        for (Map.Entry<String, JSFileData> entry : allJSFilesData.entrySet()) {
+            String jsFileUrl = entry.getKey();
+            JSFileData jsData = entry.getValue();
+            int totalCount = jsData.getFirstFinding().size() + jsData.getLatest().size();
+            TableRow parentRow = new TableRow(rowNum++, jsFileUrl, totalCount, "New");
+            rows.add(parentRow);
         }
-        fireTableDataChanged();
     }
 
     public void addJSFile(String jsFileUrl, List<Endpoint> newEndpoints) {
@@ -98,7 +101,7 @@ public class JSFileTableModel extends AbstractTableModel {
 
     @Override
     public Object getValueAt(int rowIndex, int columnIndex) {
-        TableRow row = getRow(rowIndex);
+        TableRow row = getRowData(rowIndex);
         if (row.isParent()) {
             switch (columnIndex) {
                 case 0: return row.getRowNumber();
@@ -113,6 +116,13 @@ public class JSFileTableModel extends AbstractTableModel {
             }
         }
         return "";
+    }
+
+    public TableRow getRowData(int rowIndex) {
+        if (rowIndex >= 0 && rowIndex < rows.size()) {
+            return rows.get(rowIndex);
+        }
+        return null;
     }
 
     public TableRow getRow(int rowIndex) {
