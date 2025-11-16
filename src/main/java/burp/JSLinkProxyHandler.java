@@ -67,7 +67,13 @@ public class JSLinkProxyHandler implements ProxyResponseHandler {
                 }
 
                 dataPersistence.saveData(allJSFiles);
-                SwingUtilities.invokeLater(tableModel::updateRows);
+                SwingUtilities.invokeLater(() -> {
+                    try {
+                        tableModel.updateRows();
+                    } catch (Exception e) {
+                        api.logging().logToError("Error updating table: " + e.getMessage());
+                    }
+                });
             }
 
         } catch (Exception e) {
