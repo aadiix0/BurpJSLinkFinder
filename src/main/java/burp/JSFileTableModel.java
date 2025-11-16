@@ -34,30 +34,41 @@ public class JSFileTableModel extends AbstractTableModel {
     }
 
     public void addJSFile(String jsFileUrl, List<Endpoint> endpoints) {
-        boolean exists = false;
+
+        api.logging().logToOutput("=== Adding JS file: " + jsFileUrl);
+        api.logging().logToOutput("=== Number of endpoints: " + endpoints.size());
+        api.logging().logToOutput("=== Current row count: " + rows.size());
+
+        // Check if this JS file already exists
         for (TableRow row : rows) {
             if (row.isParent() && row.getJsFileUrl().equals(jsFileUrl)) {
-                exists = true;
-                break;
+                api.logging().logToOutput("=== JS file already exists, skipping");
+                return;  // Already exists, don't add again
             }
         }
 
-        if (!exists) {
-            int rowNum = getNextRowNumber();
-            TableRow newRow = new TableRow(rowNum, jsFileUrl, endpoints.size(), "New");
-            rows.add(newRow);
-
-            List<String> endpointUrls = endpoints.stream()
-                .map(Endpoint::getUrl)
-                .collect(Collectors.toList());
-
-            JSFileData jsData = new JSFileData(jsFileUrl, endpointUrls);
-            allJSFilesData.put(jsFileUrl, jsData);
-
-            fireTableRowsInserted(rows.size() - 1, rows.size() - 1);
-
-            api.logging().logToOutput("Added JS file: " + jsFileUrl + " with " + endpoints.size() + " endpoints");
+        // Convert endpoints to strings
+        List<String> endpointUrls = new ArrayList<>();
+        for (Endpoint ep : endpoints) {
+            endpointUrls.add(ep.getUrl());
         }
+
+        // Create JSFileData for this JS file
+        JSFileData jsData = new JSFileData(jsFileUrl, endpointUrls);
+        allJSFilesData.put(jsFileUrl, jsData);
+
+        // Create NEW parent row
+        int rowNum = rows.size() + 1;
+        TableRow newParentRow = new TableRow(rowNum, jsFileUrl, endpoints.size(), "New");
+
+        // Add to rows list
+        rows.add(newParentRow);
+
+        api.logging().logToOutput("=== Added new parent row");
+        api.logging().logToOutput("=== New row count: " + rows.size());
+
+        // Notify table
+        fireTableRowsInserted(rows.size() - 1, rows.size() - 1);
     }
 
     private int getNextRowNumber() {
@@ -136,66 +147,34 @@ public class JSFileTableModel extends AbstractTableModel {
     }
 
     public void toggleRow(int rowIndex) {
-        if (rowIndex < 0 || rowIndex >= rows.size()) {
-            return;
-        }
+        TableRow parentRow = rows.get(rowIndex);
 
-        TableRow row = rows.get(rowIndex);
+        if (!parentRow.isExpanded()) {
+            // Get endpoints for THIS JS file only
+            String jsFileUrl = parentRow.getJsFileUrl();
+            JSFileData jsData = allJSFilesData.get(jsFileUrl);
 
-        if (!row.isParent()) {
-            return;
-        }
-
-        if (row.isExpanded()) {
-            int removeCount = 0;
-            for (int i = rowIndex + 1; i < rows.size(); i++) {
-                if (rows.get(i).isParent()) {
-                    break;
-                }
-                removeCount++;
-            }
-
-            for (int i = 0; i < removeCount; i++) {
-                rows.remove(rowIndex + 1);
-            }
-
-            row.setExpanded(false);
-            fireTableRowsDeleted(rowIndex + 1, rowIndex + removeCount);
-            fireTableRowsUpdated(rowIndex, rowIndex);
-
-        } else {
-            String jsFileUrl = row.getJsFileUrl();
-            JSFileData jsFileData = getJSFileData(jsFileUrl);
-
-            if (jsFileData == null) {
-                return;
-            }
-
-            List<TableRow> childRows = new ArrayList<>();
-
-            int firstFindingCount = jsFileData.getFirstFinding().size();
-            TableRow firstFindingRow = new TableRow(
-                "[+] First Finding [" + firstFindingCount + " endpoints]",
-                firstFindingCount,
-                "First Finding"
-            );
-            childRows.add(firstFindingRow);
-
-            int latestCount = jsFileData.getLatest().size();
-            if (latestCount > 0) {
-                TableRow latestRow = new TableRow(
-                    "[+] Latest [" + latestCount + " endpoints]",
-                    latestCount,
-                    "Latest"
+            if (jsData != null) {
+                // Create category row
+                List<String> endpoints = jsData.getFirstFinding();
+                TableRow categoryRow = new TableRow(
+                    "[+] First Finding [" + endpoints.size() + " endpoints]",
+                    endpoints.size(),
+                    "First Finding"
                 );
-                childRows.add(latestRow);
+
+                // Insert AFTER parent row
+                rows.add(rowIndex + 1, categoryRow);
+                parentRow.setExpanded(true);
+
+                fireTableRowsInserted(rowIndex + 1, rowIndex + 1);
             }
+        } else {
+            // Collapse - remove child row
+            rows.remove(rowIndex + 1);
+            parentRow.setExpanded(false);
 
-            rows.addAll(rowIndex + 1, childRows);
-            row.setExpanded(true);
-
-            fireTableRowsInserted(rowIndex + 1, rowIndex + childRows.size());
-            fireTableRowsUpdated(rowIndex, rowIndex);
+            fireTableRowsDeleted(rowIndex + 1, rowIndex + 1);
         }
     }
 
