@@ -50,27 +50,8 @@ public class MainTab {
         jsFileTable.setFillsViewportHeight(true);
         jsFileTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
 
-        TableRowSorter<javax.swing.table.TableModel> sorter = new TableRowSorter<>(jsFileTable.getModel());
-        jsFileTable.setRowSorter(sorter);
-
-        sorter.setComparator(0, (Comparator<Object>) (o1, o2) -> {
-            if (o1 == null || o2 == null) return 0;
-            try {
-                Integer num1 = (Integer) o1;
-                Integer num2 = (Integer) o2;
-                return num1.compareTo(num2);
-            } catch (Exception e) {
-                return 0;
-            }
-        });
-
-        sorter.setComparator(2, (Comparator<Object>) (o1, o2) -> {
-            int num1 = extractNumberFromCount(o1);
-            int num2 = extractNumberFromCount(o2);
-            return Integer.compare(num1, num2);
-        });
-
         jsFileTable.setAutoCreateRowSorter(false);
+        jsFileTable.setRowSorter(null);
 
         jsFileTable.getColumnModel().getColumn(0).setPreferredWidth(50);
         jsFileTable.getColumnModel().getColumn(1).setPreferredWidth(500);
@@ -90,13 +71,61 @@ public class MainTab {
                     int modelRow = table.convertRowIndexToModel(row);
                     TableRow tableRow = jsFileTableModel.getRowData(modelRow);
 
-                    if (tableRow != null && tableRow.isParent()) {
+                    if (tableRow == null) return this;
+
+                    if (tableRow.isParent()) {
+                        // Parent row - bold font
                         setFont(new Font(getFont().getName(), Font.BOLD, 12));
+                        setText(value.toString());
                     } else {
+                        // Child row (First Finding/Latest) - inherit parent color
                         setFont(new Font(getFont().getName(), Font.PLAIN, 12));
+                        setText("    " + value);  // Indented
+
+                        // Find parent row to get its status
+                        if (!isSelected) {
+                            TableRow parentRow = findParentRow(modelRow);
+                            if (parentRow != null) {
+                                String parentStatus = parentRow.getStatus();
+                                applyStatusColor(parentStatus);
+                            }
+                        }
                     }
 
                     return this;
+                }
+
+                private TableRow findParentRow(int childRowIndex) {
+                    // Look backwards for parent
+                    for (int i = childRowIndex - 1; i >= 0; i--) {
+                        TableRow row = jsFileTableModel.getRowData(i);
+                        if (row != null && row.isParent()) {
+                            return row;
+                        }
+                    }
+                    return null;
+                }
+
+                private void applyStatusColor(String status) {
+                    switch (status) {
+                        case "New":
+                            setBackground(new Color(173, 216, 230)); // Light blue
+                            break;
+                        case "Working":
+                            setBackground(new Color(255, 255, 102)); // YELLOW
+                            break;
+                        case "Later":
+                            setBackground(new Color(255, 102, 102)); // RED
+                            break;
+                        case "Ignore":
+                            setBackground(Color.LIGHT_GRAY);
+                            break;
+                        case "Done":
+                            setBackground(new Color(144, 238, 144)); // Light green
+                            break;
+                        default:
+                            setBackground(Color.WHITE);
+                    }
                 }
             }
         );
@@ -135,12 +164,12 @@ public class MainTab {
                             setForeground(Color.BLUE);
                             break;
                         case "Working":
-                            setBackground(new Color(255, 255, 224)); // Light yellow
-                            setForeground(new Color(184, 134, 11));
+                            setBackground(new Color(255, 255, 102)); // BRIGHT YELLOW
+                            setForeground(new Color(139, 69, 19));   // Brown text
                             break;
                         case "Later":
-                            setBackground(new Color(255, 228, 196)); // Bisque
-                            setForeground(new Color(255, 140, 0));
+                            setBackground(new Color(255, 102, 102)); // BRIGHT RED
+                            setForeground(new Color(139, 0, 0));     // Dark red text
                             break;
                         case "Ignore":
                             setBackground(Color.LIGHT_GRAY);
