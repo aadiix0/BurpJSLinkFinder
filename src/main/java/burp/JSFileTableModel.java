@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 public class JSFileTableModel extends AbstractTableModel {
     private final List<TableRow> rows;
@@ -26,55 +27,51 @@ public class JSFileTableModel extends AbstractTableModel {
         fireTableDataChanged();
     }
 
-    public void addRow(String jsFileUrl, List<Endpoint> newEndpoints) {
+    public void addJSFile(String jsFileUrl, List<Endpoint> newEndpoints) {
+        // Convert Endpoint list to String list
+        List<String> endpointUrls = newEndpoints.stream()
+            .map(Endpoint::getUrl)
+            .collect(Collectors.toList());
+
         JSFileData jsFileData = allJSFilesData.get(jsFileUrl);
 
         if (jsFileData == null) {
-            // It's a brand new JS file
-            jsFileData = new JSFileData(jsFileUrl);
-            jsFileData.setFirstFinding(newEndpoints);
+            // First time seeing this JS file
+            jsFileData = new JSFileData(jsFileUrl, endpointUrls);
             jsFileData.setStatus("New");
             allJSFilesData.put(jsFileUrl, jsFileData);
 
-            // Add to the table view
-            int parentRowCount = 0;
-            for (TableRow row : rows) {
-                if (row.isParent()) {
-                    parentRowCount++;
-                }
-            }
-            TableRow newRow = new TableRow(
-                parentRowCount + 1,
-                jsFileUrl,
-                newEndpoints.size(),
-                "New"
-            );
+            // Add new row
+            TableRow newRow = new TableRow(rows.size() + 1, jsFileUrl, endpointUrls.size(), "New");
             rows.add(newRow);
             fireTableRowsInserted(rows.size() - 1, rows.size() - 1);
 
         } else {
-            // It's an existing file, check for new endpoints
-            List<Endpoint> firstFinding = jsFileData.getFirstFinding();
-            List<Endpoint> latest = jsFileData.getLatest();
-            List<Endpoint> newlyFoundInLatest = new ArrayList<>();
+            // JS file seen before - check for new endpoints
+            List<String> firstFinding = jsFileData.getFirstFinding();
+            List<String> latest = jsFileData.getLatest();
 
-            for (Endpoint newEndpoint : newEndpoints) {
-                boolean inFirst = firstFinding.stream().anyMatch(e -> e.getEndpoint().equals(newEndpoint.getEndpoint()));
-                boolean inLatest = latest.stream().anyMatch(e -> e.getEndpoint().equals(newEndpoint.getEndpoint()));
-                if (!inFirst && !inLatest) {
-                    newlyFoundInLatest.add(newEndpoint);
+            // Find new endpoints not in First Finding or Latest
+            List<String> newLatest = new ArrayList<>();
+            for (String endpointUrl : endpointUrls) {
+                if (!firstFinding.contains(endpointUrl) && !latest.contains(endpointUrl)) {
+                    newLatest.add(endpointUrl);
                 }
             }
 
-            if (!newlyFoundInLatest.isEmpty()) {
-                latest.addAll(newlyFoundInLatest);
+            if (!newLatest.isEmpty()) {
+                // Add to latest
+                latest.addAll(newLatest);
+                jsFileData.setLatest(latest);
                 jsFileData.setStatus("Updated");
 
-                // Find the corresponding row and update it
+                // Update row count
                 for (int i = 0; i < rows.size(); i++) {
                     TableRow row = rows.get(i);
                     if (row.isParent() && row.getJsFileUrl().equals(jsFileUrl)) {
-                        row.setCount(firstFinding.size() + latest.size());
+                        // Update total count
+                        int newTotal = firstFinding.size() + latest.size();
+                        row.setCount(newTotal);
                         row.setStatus("Updated");
                         fireTableRowsUpdated(i, i);
                         break;
@@ -191,5 +188,9 @@ public class JSFileTableModel extends AbstractTableModel {
 
     private JSFileData getJSFileData(String jsFileUrl) {
         return allJSFilesData.get(jsFileUrl);
+    }
+
+    public void updateRows() {
+        fireTableDataChanged();
     }
 }

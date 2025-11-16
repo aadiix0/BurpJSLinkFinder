@@ -45,35 +45,18 @@ public class JSLinkProxyHandler implements ProxyResponseHandler {
 
             if (isJavaScript) {
                 String body = response.bodyToString();
-                List<String> currentEndpoints = LinkParser.findEndpoints(body).stream()
-                        .map(Endpoint::getUrl)
-                        .collect(Collectors.toList());
+                List<Endpoint> currentEndpoints = LinkParser.findEndpoints(body);
 
-                if (allJSFiles.containsKey(url)) {
-                    // Existing file
-                    JSFileData jsFileData = allJSFiles.get(url);
-                    List<String> firstFinding = jsFileData.getFirstFinding();
-                    List<String> newEndpoints = currentEndpoints.stream()
-                            .filter(e -> !firstFinding.contains(e))
-                            .collect(Collectors.toList());
-
-                    if (!newEndpoints.isEmpty()) {
-                        jsFileData.getLatest().addAll(newEndpoints);
-                        jsFileData.setLastScanTimestamp(System.currentTimeMillis());
-                    }
-                } else {
-                    // New file
-                    allJSFiles.put(url, new JSFileData(url, currentEndpoints));
+                if (!currentEndpoints.isEmpty()) {
+                    SwingUtilities.invokeLater(() -> {
+                        try {
+                            tableModel.addJSFile(url, currentEndpoints);
+                            dataPersistence.saveData(allJSFiles);
+                        } catch (Exception e) {
+                            api.logging().logToError("Error updating table: " + e.getMessage(), e);
+                        }
+                    });
                 }
-
-                dataPersistence.saveData(allJSFiles);
-                SwingUtilities.invokeLater(() -> {
-                    try {
-                        tableModel.updateRows();
-                    } catch (Exception e) {
-                        api.logging().logToError("Error updating table: " + e.getMessage());
-                    }
-                });
             }
 
         } catch (Exception e) {

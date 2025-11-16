@@ -40,6 +40,7 @@ public class TableRow {
     public int getCount() { return count; }
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+    public void setCount(int count) { this.count = count; }
     public String getCategory() { return category; }
     public int getRowNumber() { return rowNumber; }
 }
