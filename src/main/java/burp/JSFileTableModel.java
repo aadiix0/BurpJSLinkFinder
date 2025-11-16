@@ -88,20 +88,37 @@ public class JSFileTableModel extends AbstractTableModel {
     @Override
     public Object getValueAt(int rowIndex, int columnIndex) {
         TableRow row = getRowData(rowIndex);
-        if (row.isParent()) {
-            switch (columnIndex) {
-                case 0: return row.getRowNumber();
-                case 1: return row.getDisplayText();
-                case 2: return "[" + row.getCount() + " total]";
-                case 3: return row.getStatus();
-            }
-        } else {
-            switch (columnIndex) {
-                case 1: return "    " + row.getDisplayText();
-                default: return "";
+        if (row == null) return "";
+
+        switch (columnIndex) {
+            case 0: return row.isParent() ? row.getRowNumber() : "";
+            case 1: return row.getDisplayText();
+            case 2: return row.isParent() ? "[" + row.getCount() + " total]" : "";
+            case 3: return row.isParent() ? row.getStatus() : "";
+            default: return "";
+        }
+    }
+
+    @Override
+    public boolean isCellEditable(int rowIndex, int columnIndex) {
+        if (columnIndex == 3) {
+            TableRow row = getRowData(rowIndex);
+            return row != null && row.isParent();
+        }
+        return false;
+    }
+
+    @Override
+    public void setValueAt(Object value, int rowIndex, int columnIndex) {
+        if (columnIndex == 3 && rowIndex >= 0 && rowIndex < rows.size()) {
+            TableRow row = rows.get(rowIndex);
+            if (row.isParent()) {
+                row.setStatus(value.toString());
+                fireTableCellUpdated(rowIndex, columnIndex);
+
+                api.logging().logToOutput("Status changed to: " + value + " for row " + rowIndex);
             }
         }
-        return "";
     }
 
     public TableRow getRowData(int rowIndex) {

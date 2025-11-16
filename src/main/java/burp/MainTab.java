@@ -10,6 +10,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import javax.swing.table.DefaultTableCellRenderer;
+import javax.swing.table.TableColumn;
 import javax.swing.table.TableRowSorter;
 import java.util.Comparator;
 import java.util.concurrent.ConcurrentHashMap;
@@ -20,7 +21,7 @@ public class MainTab {
     private final Map<String, JSFileData> allJSFiles;
     private final JSFileTableModel jsFileTableModel;
     private JTable jsFileTable;
-    private LineNumberTextArea endpointsTextArea;
+    private JTextArea endpointsTextArea;
     private JScrollPane leftScrollPane;
     private JScrollPane rightScrollPane;
 
@@ -100,36 +101,45 @@ public class MainTab {
             }
         );
 
-        // Status column editor with dropdown
+        // Configure Status column (column index 3)
+        TableColumn statusColumn = jsFileTable.getColumnModel().getColumn(3);
+
+        // Create dropdown with 5 options
         String[] statusOptions = {"New", "Working", "Later", "Ignore", "Done"};
         JComboBox<String> statusComboBox = new JComboBox<>(statusOptions);
+
+        // Set as cell editor
         DefaultCellEditor statusEditor = new DefaultCellEditor(statusComboBox);
-        jsFileTable.getColumnModel().getColumn(3).setCellEditor(statusEditor);
+        statusEditor.setClickCountToStart(2);  // Requires double-click
+        statusColumn.setCellEditor(statusEditor);
 
-        // Status column renderer with colors
-        jsFileTable.getColumnModel().getColumn(3).setCellRenderer(
-            new DefaultTableCellRenderer() {
-                @Override
-                public Component getTableCellRendererComponent(
-                        JTable table, Object value, boolean isSelected,
-                        boolean hasFocus, int row, int column) {
+        // Add colored renderer
+        statusColumn.setCellRenderer(new DefaultTableCellRenderer() {
+            @Override
+            public Component getTableCellRendererComponent(
+                    JTable table, Object value, boolean isSelected,
+                    boolean hasFocus, int row, int column) {
 
-                    super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+                super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
 
-                    String status = value != null ? value.toString() : "New";
-                    setHorizontalAlignment(CENTER);
+                String status = value != null ? value.toString() : "New";
+                setText(status);
+                setHorizontalAlignment(CENTER);
+                setFont(new Font("Arial", Font.BOLD, 11));
 
+                // Set background colors
+                if (!isSelected) {
                     switch (status) {
                         case "New":
-                            setBackground(new Color(173, 216, 230));
+                            setBackground(new Color(173, 216, 230)); // Light blue
                             setForeground(Color.BLUE);
                             break;
                         case "Working":
-                            setBackground(new Color(255, 255, 224));
+                            setBackground(new Color(255, 255, 224)); // Light yellow
                             setForeground(new Color(184, 134, 11));
                             break;
                         case "Later":
-                            setBackground(new Color(255, 228, 196));
+                            setBackground(new Color(255, 228, 196)); // Bisque
                             setForeground(new Color(255, 140, 0));
                             break;
                         case "Ignore":
@@ -137,15 +147,20 @@ public class MainTab {
                             setForeground(Color.DARK_GRAY);
                             break;
                         case "Done":
-                            setBackground(new Color(144, 238, 144));
+                            setBackground(new Color(144, 238, 144)); // Light green
                             setForeground(new Color(0, 100, 0));
                             break;
+                        default:
+                            setBackground(Color.WHITE);
+                            setForeground(Color.BLACK);
                     }
-
-                    return this;
                 }
+
+                return this;
             }
-        );
+        });
+
+        api.logging().logToOutput("Status column editor configured");
 
         jsFileTable.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) {
@@ -194,27 +209,38 @@ public class MainTab {
     }
 
     private void initializeRightPanel() {
-        endpointsTextArea = new LineNumberTextArea();
+        // Simple text area - no line numbers
+        endpointsTextArea = new JTextArea();
+        endpointsTextArea.setFont(new Font("Consolas", Font.PLAIN, 12));
+        endpointsTextArea.setEditable(false);
+
+        // Gray background - ALWAYS
+        endpointsTextArea.setBackground(new Color(60, 63, 65));  // Dark gray like IntelliJ
+        endpointsTextArea.setForeground(new Color(220, 220, 220));  // Light gray text
+
+        endpointsTextArea.setCaretColor(Color.WHITE);
+        endpointsTextArea.getCaret().setVisible(true);
+        endpointsTextArea.setSelectionColor(new Color(50, 120, 200));
+
         rightScrollPane = new JScrollPane(endpointsTextArea);
+        rightScrollPane.setBorder(BorderFactory.createEmptyBorder());
     }
 
     private void updateRightPanel(TableRow categoryRow, TableRow parentRow) {
         JSFileData jsFileData = allJSFiles.get(parentRow.getJsFileUrl());
-        SimpleDateFormat sdf = new SimpleDateFormat("MMM dd, yyyy hh:mm a");
-        String timestamp = sdf.format(new Date(jsFileData.getLastScanTimestamp()));
+        List<String> endpoints = categoryRow.getCategory().equals("Latest") ? jsFileData.getLatest() : jsFileData.getFirstFinding();
 
         StringBuilder sb = new StringBuilder();
-        sb.append("Category: ").append(categoryRow.getCategory()).append(" [").append(categoryRow.getCount()).append(" endpoints] | ");
-        sb.append(categoryRow.getCategory().equals("Latest") ? "Last Update: " : "Discovered: ").append(timestamp).append("\n");
+        sb.append("Category: ").append(categoryRow.getCategory()).append(" [").append(endpoints.size()).append(" endpoints]\n");
         sb.append("Source: ").append(parentRow.getJsFileUrl()).append("\n");
-        sb.append("Total: ").append(categoryRow.getCount()).append(categoryRow.getCategory().equals("Latest") ? " new endpoints\n\n" : " endpoints\n\n");
+        sb.append("Total: ").append(endpoints.size()).append(" endpoints\n\n");
 
-        List<String> endpoints = categoryRow.getCategory().equals("Latest") ? jsFileData.getLatest() : jsFileData.getFirstFinding();
         for (String endpoint : endpoints) {
             sb.append(endpoint).append("\n");
         }
 
         endpointsTextArea.setText(sb.toString());
+        endpointsTextArea.setCaretPosition(0);
     }
 
     public Component getComponent() {
@@ -263,8 +289,11 @@ public class MainTab {
         JToggleButton editModeButton = new JToggleButton("Edit Mode: OFF");
         editModeButton.addActionListener(e -> {
             boolean editMode = editModeButton.isSelected();
+            endpointsTextArea.setEditable(editMode);
 
-            endpointsTextArea.setEditMode(editMode);
+            // Keep gray background in both modes
+            endpointsTextArea.setBackground(new Color(60, 63, 65));
+            endpointsTextArea.setForeground(new Color(220, 220, 220));
 
             if (editMode) {
                 editModeButton.setText("Edit Mode: ON");
