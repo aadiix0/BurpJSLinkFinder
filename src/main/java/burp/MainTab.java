@@ -200,8 +200,8 @@ public class MainTab {
                 setHorizontalAlignment(CENTER);
                 setFont(new Font("Arial", Font.BOLD, 11));
 
+                // Always set colors unless the row is selected
                 if (!isSelected) {
-                    // Keep colored backgrounds for status
                     switch (status) {
                         case "New":
                             setBackground(new Color(173, 216, 230)); // Light blue
@@ -223,9 +223,17 @@ public class MainTab {
                             setBackground(new Color(144, 238, 144)); // Light green
                             setForeground(new Color(0, 100, 0));
                             break;
+                        default:
+                            // Default appearance if status is unexpected
+                            setBackground(table.getBackground());
+                            setForeground(table.getForeground());
+                            break;
                     }
+                } else {
+                    // Use table's default selection colors
+                    setBackground(table.getSelectionBackground());
+                    setForeground(table.getSelectionForeground());
                 }
-
                 return this;
             }
         });
@@ -264,6 +272,44 @@ public class MainTab {
 
         // The JTable needs to be in a JScrollPane to see headers
         JScrollPane scrollPane = new JScrollPane(jsFileTable);
+
+        // FIX: FILE/CATEGORY COLUMN - NORMAL BACKGROUND, BOLD PARENT
+        jsFileTable.getColumnModel().getColumn(1).setCellRenderer(
+            new DefaultTableCellRenderer() {
+                @Override
+                public Component getTableCellRendererComponent(
+                    JTable table, Object value, boolean isSelected,
+                    boolean hasFocus, int row, int column) {
+
+                    super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+
+                    // Use DEFAULT table background (no color override)
+                    if (!isSelected) {
+                        setBackground(null); // Use table's default background
+                        setForeground(Color.BLACK);
+                    } else {
+                        // Use default selection colors
+                        setBackground(table.getSelectionBackground());
+                        setForeground(table.getSelectionForeground());
+                    }
+
+                    int modelRow = table.convertRowIndexToModel(row);
+                    TableRow tableRow = jsFileTableModel.getRowData(modelRow);
+
+                    if (tableRow != null) {
+                        if (tableRow.isParent()) {
+                            setFont(new Font(getFont().getName(), Font.BOLD, 12));
+                            setText(value.toString());
+                        } else {
+                            setFont(new Font(getFont().getName(), Font.PLAIN, 12));
+                            // Indent child rows for clarity
+                            setText("   " + value);
+                        }
+                    }
+                    return this;
+                }
+            }
+        );
 
         leftPanel.add(searchPanel, BorderLayout.NORTH);
         leftPanel.add(scrollPane, BorderLayout.CENTER);
