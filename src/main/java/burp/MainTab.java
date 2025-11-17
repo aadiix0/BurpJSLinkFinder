@@ -177,42 +177,7 @@ public class MainTab {
         jsFileTable.setFillsViewportHeight(true);
         jsFileTable.setShowGrid(true);
         jsFileTable.setGridColor(new Color(220, 220, 220));
-
-        // This enables the default alternating row colors
-        jsFileTable.setBackground(Color.WHITE);
         jsFileTable.setRowHeight(22);
-
-
-        // Custom renderer for File/Category column
-        jsFileTable.getColumnModel().getColumn(1).setCellRenderer(
-            new DefaultTableCellRenderer() {
-                @Override
-                public Component getTableCellRendererComponent(
-                        JTable table, Object value, boolean isSelected,
-                        boolean hasFocus, int row, int column) {
-
-                    // Call super - this gives us the default alternating backgrounds
-                    Component c = super.getTableCellRendererComponent(
-                        table, value, isSelected, hasFocus, row, column);
-
-                    // DO NOT call setBackground() here!
-                    // The super call already set alternating colors
-
-                    int modelRow = table.convertRowIndexToModel(row);
-                    TableRow tableRow = jsFileTableModel.getRowData(modelRow);
-
-                    if (tableRow != null && tableRow.isParent()) {
-                        c.setFont(new Font(c.getFont().getName(), Font.BOLD, 12));
-                        ((JLabel) c).setText(value.toString());
-                    } else {
-                        c.setFont(new Font(c.getFont().getName(), Font.PLAIN, 12));
-                        ((JLabel) c).setText("    " + value);
-                    }
-
-                    return c;
-                }
-            }
-        );
 
         // Configure Status column (column index 3)
         TableColumn statusColumn = jsFileTable.getColumnModel().getColumn(3);
