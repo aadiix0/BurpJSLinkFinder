@@ -4,6 +4,8 @@ import burp.api.montoya.MontoyaApi;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import javax.swing.*;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
@@ -12,6 +14,8 @@ import java.util.List;
 import java.util.Map;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.TableColumn;
+import javax.swing.table.TableModel;
+import javax.swing.table.TableRowSorter;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class MainTab {
@@ -21,8 +25,9 @@ public class MainTab {
     private final JSFileTableModel jsFileTableModel;
     private JTable jsFileTable;
     private JTextArea endpointsTextArea;
-    private JScrollPane leftScrollPane;
-    private JScrollPane rightScrollPane;
+    // Step 1: Change JScrollPane to Component
+    private Component leftComponent;
+    private Component rightComponent;
     private final Map<String, String> userNotes = new ConcurrentHashMap<>();
     private String currentlyDisplayedKey = null;
 
@@ -57,11 +62,48 @@ public class MainTab {
     }
 
     private void initializeLeftPanel() {
+        // This is the main component for the left side
+        JPanel leftPanel = new JPanel(new BorderLayout());
+
+        // Search box at top
+        JPanel searchPanel = new JPanel(new BorderLayout());
+        searchPanel.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
+
+        JTextField searchField = new JTextField();
+        searchField.setToolTipText("Search JS files...");
+
+        searchField.getDocument().addDocumentListener(new DocumentListener() {
+            public void insertUpdate(DocumentEvent e) { filterTable(); }
+            public void removeUpdate(DocumentEvent e) { filterTable(); }
+            public void changedUpdate(DocumentEvent e) { filterTable(); }
+
+            private void filterTable() {
+                String searchText = searchField.getText().toLowerCase();
+                TableRowSorter<TableModel> sorter = (TableRowSorter<TableModel>) jsFileTable.getRowSorter();
+
+                if (searchText.isEmpty()) {
+                    sorter.setRowFilter(null);
+                } else {
+                    sorter.setRowFilter(RowFilter.regexFilter("(?i)" + searchText));
+                }
+            }
+        });
+
+        searchPanel.add(new JLabel("🔍 "), BorderLayout.WEST);
+        searchPanel.add(searchField, BorderLayout.CENTER);
+
         jsFileTable = new JTable(jsFileTableModel);
         jsFileTable.setFillsViewportHeight(true);
         jsFileTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        jsFileTable.setAutoCreateRowSorter(false);
-        jsFileTable.setRowSorter(null);
+
+        TableRowSorter<TableModel> sorter = new TableRowSorter<>(jsFileTableModel);
+        jsFileTable.setRowSorter(sorter);
+
+        // Disable sorting on all columns to protect the parent-child hierarchy,
+        // but keep the sorter for filtering via the search box.
+        for (int i = 0; i < jsFileTable.getColumnCount(); i++) {
+            sorter.setSortable(i, false);
+        }
 
         jsFileTable.getColumnModel().getColumn(0).setPreferredWidth(50);
         jsFileTable.getColumnModel().getColumn(1).setPreferredWidth(500);
@@ -78,54 +120,24 @@ public class MainTab {
 
                     super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
 
+                    // NO COLORS - always white background
                     setBackground(Color.WHITE);
                     setForeground(Color.BLACK);
 
                     int modelRow = table.convertRowIndexToModel(row);
                     TableRow tableRow = jsFileTableModel.getRowData(modelRow);
 
-                    if (tableRow == null) return this;
-
-                    if (tableRow.isParent()) {
+                    if (tableRow != null && tableRow.isParent()) {
+                        // Parent row - bold
                         setFont(new Font(getFont().getName(), Font.BOLD, 12));
                         setText(value.toString());
-                        if (!isSelected) {
-                            applyStatusColor(tableRow.getStatus());
-                        }
                     } else {
+                        // Child row - normal, indented
                         setFont(new Font(getFont().getName(), Font.PLAIN, 12));
                         setText("    " + value);
-                        if (!isSelected) {
-                            TableRow parentRow = findParentRow(modelRow);
-                            if (parentRow != null) {
-                                applyStatusColor(parentRow.getStatus());
-                            }
-                        }
                     }
 
                     return this;
-                }
-
-                private TableRow findParentRow(int childRowIndex) {
-                    for (int i = childRowIndex - 1; i >= 0; i--) {
-                        TableRow row = jsFileTableModel.getRowData(i);
-                        if (row != null && row.isParent()) {
-                            return row;
-                        }
-                    }
-                    return null;
-                }
-
-                private void applyStatusColor(String status) {
-                    if (status == null) status = "New";
-                    switch (status) {
-                        case "New": setBackground(new Color(173, 216, 230)); setForeground(Color.BLUE); break;
-                        case "Working": setBackground(new Color(255, 255, 102)); setForeground(new Color(139, 69, 19)); break;
-                        case "Later": setBackground(new Color(255, 102, 102)); setForeground(new Color(139, 0, 0)); break;
-                        case "Ignore": setBackground(Color.LIGHT_GRAY); setForeground(Color.DARK_GRAY); break;
-                        case "Done": setBackground(new Color(144, 238, 144)); setForeground(new Color(0, 100, 0)); break;
-                        default: setBackground(Color.WHITE); setForeground(Color.BLACK);
-                    }
                 }
             }
         );
@@ -142,21 +154,66 @@ public class MainTab {
             @Override
             public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
                 super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
-                String status = value != null ? value.toString() : "New";
-                setText(status);
+
                 setHorizontalAlignment(CENTER);
                 setFont(new Font("Arial", Font.BOLD, 11));
+
+                int modelRow = table.convertRowIndexToModel(row);
+                TableRow tableRow = jsFileTableModel.getRowData(modelRow);
+
+                String status;
+                if (tableRow != null && tableRow.isParent()) {
+                    status = tableRow.getStatus();
+                } else {
+                    TableRow parentRow = findParentRow(modelRow);
+                    status = parentRow != null ? parentRow.getStatus() : "New";
+                }
+
+                setText(status);
+
                 if (!isSelected) {
-                    switch (status) {
-                        case "New": setBackground(new Color(173, 216, 230)); setForeground(Color.BLUE); break;
-                        case "Working": setBackground(new Color(255, 255, 102)); setForeground(new Color(139, 69, 19)); break;
-                        case "Later": setBackground(new Color(255, 102, 102)); setForeground(new Color(139, 0, 0)); break;
-                        case "Ignore": setBackground(Color.LIGHT_GRAY); setForeground(Color.DARK_GRAY); break;
-                        case "Done": setBackground(new Color(144, 238, 144)); setForeground(new Color(0, 100, 0)); break;
-                        default: setBackground(Color.WHITE); setForeground(Color.BLACK);
+                    applyStatusColor(status);
+                }
+
+                return this;
+            }
+
+            private TableRow findParentRow(int childRowIndex) {
+                for (int i = childRowIndex - 1; i >= 0; i--) {
+                    TableRow row = jsFileTableModel.getRowData(i);
+                    if (row != null && row.isParent()) {
+                        return row;
                     }
                 }
-                return this;
+                return null;
+            }
+
+            private void applyStatusColor(String status) {
+                switch (status) {
+                    case "New":
+                        setBackground(new Color(173, 216, 230)); // Light blue
+                        setForeground(Color.BLUE);
+                        break;
+                    case "Working":
+                        setBackground(new Color(255, 255, 102)); // Yellow
+                        setForeground(new Color(139, 69, 19));
+                        break;
+                    case "Later":
+                        setBackground(new Color(255, 102, 102)); // Red
+                        setForeground(new Color(139, 0, 0));
+                        break;
+                    case "Ignore":
+                        setBackground(Color.LIGHT_GRAY);
+                        setForeground(Color.DARK_GRAY);
+                        break;
+                    case "Done":
+                        setBackground(new Color(144, 238, 144)); // Light green
+                        setForeground(new Color(0, 100, 0));
+                        break;
+                    default:
+                        setBackground(Color.WHITE);
+                        setForeground(Color.BLACK);
+                }
             }
         });
 
@@ -192,18 +249,66 @@ public class MainTab {
             }
         });
 
-        leftScrollPane = new JScrollPane(jsFileTable);
+        // The JTable needs to be in a JScrollPane to see headers
+        JScrollPane scrollPane = new JScrollPane(jsFileTable);
+
+        leftPanel.add(searchPanel, BorderLayout.NORTH);
+        leftPanel.add(scrollPane, BorderLayout.CENTER);
+
+        // Step 2: Assign the composite panel directly, removing the outer scroll pane
+        leftComponent = leftPanel;
     }
 
     private void initializeRightPanel() {
+        // This is the main component for the right side
         JPanel rightPanel = new JPanel(new BorderLayout());
         endpointsTextArea = new JTextArea();
         endpointsTextArea.setFont(new Font("Consolas", Font.PLAIN, 12));
         endpointsTextArea.setEditable(false);
         endpointsTextArea.setBackground(new Color(60, 63, 65));
         endpointsTextArea.setForeground(new Color(220, 220, 220));
+
+        // The text area needs its own scroll pane
         JScrollPane scrollPane = new JScrollPane(endpointsTextArea);
 
+        // Search box at top
+        JPanel searchPanel = new JPanel(new BorderLayout());
+        searchPanel.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
+        JTextField searchField = new JTextField();
+        searchField.setToolTipText("Search endpoints...");
+
+        searchField.getDocument().addDocumentListener(new DocumentListener() {
+            public void insertUpdate(DocumentEvent e) { filterEndpoints(); }
+            public void removeUpdate(DocumentEvent e) { filterEndpoints(); }
+            public void changedUpdate(DocumentEvent e) { filterEndpoints(); }
+
+            private void filterEndpoints() {
+                String searchText = searchField.getText();
+                javax.swing.text.Highlighter highlighter = endpointsTextArea.getHighlighter();
+                highlighter.removeAllHighlights();
+
+                if (searchText.isEmpty()) {
+                    return;
+                }
+
+                String content = endpointsTextArea.getText();
+                int index = content.toLowerCase().indexOf(searchText.toLowerCase());
+                while (index >= 0) {
+                    try {
+                        highlighter.addHighlight(index, index + searchText.length(),
+                                new javax.swing.text.DefaultHighlighter.DefaultHighlightPainter(Color.YELLOW));
+                        index = content.toLowerCase().indexOf(searchText.toLowerCase(), index + 1);
+                    } catch (javax.swing.text.BadLocationException ex) {
+                        // Ignore
+                    }
+                }
+            }
+        });
+
+        searchPanel.add(new JLabel("🔍 "), BorderLayout.WEST);
+        searchPanel.add(searchField, BorderLayout.CENTER);
+
+        // Button panel at bottom
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
         buttonPanel.setBackground(new Color(45, 45, 45));
 
@@ -227,11 +332,11 @@ public class MainTab {
         buttonPanel.add(editModeButton);
         buttonPanel.add(saveButton);
 
-        rightPanel.add(buttonPanel, BorderLayout.NORTH);
+        rightPanel.add(searchPanel, BorderLayout.NORTH);
         rightPanel.add(scrollPane, BorderLayout.CENTER);
+        rightPanel.add(buttonPanel, BorderLayout.SOUTH);
 
-        rightScrollPane = new JScrollPane(rightPanel);
-        rightScrollPane.setBorder(BorderFactory.createEmptyBorder());
+        rightComponent = rightPanel;
     }
 
     private void updateRightPanel(TableRow parentRow, TableRow categoryRow) {
@@ -279,7 +384,8 @@ public class MainTab {
 
     private JPanel createLinksPanel() {
         JPanel panel = new JPanel(new BorderLayout());
-        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftScrollPane, rightScrollPane);
+        // Step 3: Use the new Component fields in the JSplitPane
+        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftComponent, rightComponent);
         splitPane.setDividerLocation(400);
         splitPane.setResizeWeight(0.4);
         panel.add(splitPane, BorderLayout.CENTER);
