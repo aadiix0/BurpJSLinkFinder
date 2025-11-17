@@ -44,7 +44,6 @@ public class MainTab {
         this.dataPersistence = dataPersistence;
 
         try {
-            this.jsFileRefresher = new JSFileRefresher(api, allJSFiles, jsFileTableModel);
             // Load user notes
             String savedNotes = api.persistence().extensionData().getString("user_notes");
             if (savedNotes != null && !savedNotes.isEmpty()) {
@@ -55,12 +54,16 @@ public class MainTab {
                 }
             }
 
-            // Initialize model
+            // Step 1: Initialize table model FIRST
             this.jsFileTableModel = new JSFileTableModel(allJSFiles, api);
 
-            // Initialize left and right panels
+            // Step 2: Initialize UI components
             initializeLeftPanel();
             initializeRightPanel();
+
+            // Step 3: Create refresher AFTER table model exists
+            this.jsFileRefresher = new JSFileRefresher(api, allJSFiles, jsFileTableModel);
+
 
             api.logging().logToOutput("MainTab initialized successfully");
 
