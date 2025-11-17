@@ -10,6 +10,8 @@ import java.awt.*;
 import java.awt.datatransfer.Clipboard;
 import java.awt.datatransfer.StringSelection;
 import java.awt.event.ActionEvent;
+import java.awt.event.FocusAdapter;
+import java.awt.event.FocusEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.lang.reflect.Type;
@@ -76,46 +78,33 @@ public class MainTab {
     private void initializeLeftPanel() {
         JPanel leftPanel = new JPanel(new BorderLayout());
 
-        // Top toolbar with search and refresh
+        // TOP TOOLBAR with search and refresh
         JPanel toolbarPanel = new JPanel(new BorderLayout());
-        toolbarPanel.setBorder(BorderFactory.createEmptyBorder(3, 3, 3, 3));
+        toolbarPanel.setBackground(new Color(245, 245, 245));
+        toolbarPanel.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
 
-        // Search box (compact)
-        JPanel searchPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
-        JLabel searchIcon = new JLabel("🔍");
-        JTextField searchField = new JTextField(15); // Compact width
-        searchField.setToolTipText("Search JS files");
+        // LEFT: Search box with icon inside
+        JPanel searchPanel = createStyledSearchBox("Search JS files...");
 
-        searchField.getDocument().addDocumentListener(new DocumentListener() {
-            public void insertUpdate(DocumentEvent e) { filterTable(); }
-            public void removeUpdate(DocumentEvent e) { filterTable(); }
-            public void changedUpdate(DocumentEvent e) { filterTable(); }
-
-            private void filterTable() {
-                String searchText = searchField.getText();
-                if (searchText.isEmpty()) {
-                    ((TableRowSorter) jsFileTable.getRowSorter()).setRowFilter(null);
-                } else {
-                    ((TableRowSorter) jsFileTable.getRowSorter()).setRowFilter(
-                            RowFilter.regexFilter("(?i)" + searchText)
-                    );
-                }
-            }
-        });
-
-        searchPanel.add(searchIcon);
-        searchPanel.add(searchField);
-
-        // Refresh button
+        // RIGHT: Refresh button
         JButton refreshButton = new JButton("⟳ Refresh");
+        refreshButton.setFocusPainted(false);
+        refreshButton.setFont(new Font("Arial", Font.BOLD, 12));
+        refreshButton.setBackground(new Color(70, 130, 180));  // Steel blue
+        refreshButton.setForeground(Color.WHITE);
+        refreshButton.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(50, 100, 150), 1),
+                BorderFactory.createEmptyBorder(5, 15, 5, 15)
+        ));
+        refreshButton.setCursor(new Cursor(Cursor.HAND_CURSOR));
         refreshButton.setToolTipText("Re-scan all JS files for new endpoints");
+
         refreshButton.addActionListener(e -> {
             refreshButton.setEnabled(false);
-            refreshButton.setText("Refreshing...");
+            refreshButton.setText("⟳ Refreshing...");
 
             new Thread(() -> {
                 jsFileRefresher.refreshAllJSFiles();
-
                 SwingUtilities.invokeLater(() -> {
                     refreshButton.setEnabled(true);
                     refreshButton.setText("⟳ Refresh");
@@ -124,12 +113,11 @@ public class MainTab {
             }).start();
         });
 
-        toolbarPanel.add(searchPanel, BorderLayout.WEST);
+        toolbarPanel.add(searchPanel, BorderLayout.CENTER);
         toolbarPanel.add(refreshButton, BorderLayout.EAST);
 
         // Table
         jsFileTable = new JTable(jsFileTableModel);
-        jsFileTable.setFillsViewportHeight(true);
         TableRowSorter<TableModel> sorter = new TableRowSorter<>(jsFileTableModel);
         jsFileTable.setRowSorter(sorter);
 
@@ -183,6 +171,15 @@ public class MainTab {
         jsFileTable.getColumnModel().getColumn(2).setPreferredWidth(100);
         jsFileTable.getColumnModel().getColumn(3).setPreferredWidth(100);
 
+        jsFileTable.setFillsViewportHeight(true);
+        jsFileTable.setShowGrid(true);
+        jsFileTable.setGridColor(new Color(220, 220, 220));
+
+        // This enables the default alternating row colors
+        jsFileTable.setBackground(Color.WHITE);
+        jsFileTable.setRowHeight(22);
+
+
         // Custom renderer for File/Category column
         jsFileTable.getColumnModel().getColumn(1).setCellRenderer(
             new DefaultTableCellRenderer() {
@@ -193,9 +190,11 @@ public class MainTab {
 
                     super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
 
-                    // Use DEFAULT table background (no color override)
+                    // DO NOT set background colors - let table handle it
+                    // Remove: setBackground(Color.WHITE) or any color
+
+                    // Only set foreground (text color)
                     if (!isSelected) {
-                        setBackground(null); // Use table's default background
                         setForeground(Color.BLACK);
                     }
 
@@ -337,6 +336,13 @@ public class MainTab {
     private void initializeRightPanel() {
         // This is the main component for the right side
         JPanel rightPanel = new JPanel(new BorderLayout());
+        rightPanel.setBackground(new Color(60, 63, 65));
+
+        // TOP: Styled search box
+        JPanel searchPanel = createStyledSearchBoxDark("Search endpoints...");
+        searchPanel.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
+
+
         endpointsTextArea = new JTextArea();
         endpointsTextArea.setFont(new Font("Consolas", Font.PLAIN, 12));
         endpointsTextArea.setEditable(false);
@@ -345,43 +351,6 @@ public class MainTab {
 
         // The text area needs its own scroll pane
         JScrollPane scrollPane = new JScrollPane(endpointsTextArea);
-
-        // Search box at top
-        JPanel searchPanel = new JPanel(new BorderLayout());
-        searchPanel.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
-        JTextField searchField = new JTextField();
-        searchField.setToolTipText("Search endpoints...");
-
-        searchField.getDocument().addDocumentListener(new DocumentListener() {
-            public void insertUpdate(DocumentEvent e) { filterEndpoints(); }
-            public void removeUpdate(DocumentEvent e) { filterEndpoints(); }
-            public void changedUpdate(DocumentEvent e) { filterEndpoints(); }
-
-            private void filterEndpoints() {
-                String searchText = searchField.getText();
-                javax.swing.text.Highlighter highlighter = endpointsTextArea.getHighlighter();
-                highlighter.removeAllHighlights();
-
-                if (searchText.isEmpty()) {
-                    return;
-                }
-
-                String content = endpointsTextArea.getText();
-                int index = content.toLowerCase().indexOf(searchText.toLowerCase());
-                while (index >= 0) {
-                    try {
-                        highlighter.addHighlight(index, index + searchText.length(),
-                                new javax.swing.text.DefaultHighlighter.DefaultHighlightPainter(Color.YELLOW));
-                        index = content.toLowerCase().indexOf(searchText.toLowerCase(), index + 1);
-                    } catch (javax.swing.text.BadLocationException ex) {
-                        // Ignore
-                    }
-                }
-            }
-        });
-
-        searchPanel.add(new JLabel("🔍 "), BorderLayout.WEST);
-        searchPanel.add(searchField, BorderLayout.CENTER);
 
         // Button panel at bottom
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
@@ -576,5 +545,160 @@ public class MainTab {
             JOptionPane.showMessageDialog(null,
                     "Moved " + blacklistedUrls.size() + " files to blacklist");
         }
+    }
+
+    private JPanel createStyledSearchBox(String placeholder) {
+        JPanel searchPanel = new JPanel(new BorderLayout());
+        searchPanel.setBackground(Color.WHITE);
+        searchPanel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(200, 200, 200), 1),
+                BorderFactory.createEmptyBorder(3, 8, 3, 8)
+        ));
+
+        // Search icon label
+        JLabel searchIcon = new JLabel("🔍");
+        searchIcon.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 14));
+        searchIcon.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 5));
+
+        // Search text field
+        JTextField searchField = new JTextField();
+        searchField.setBorder(BorderFactory.createEmptyBorder());
+        searchField.setFont(new Font("Arial", Font.PLAIN, 12));
+        searchField.setOpaque(false);
+
+        // Placeholder text
+        searchField.setForeground(Color.GRAY);
+        searchField.setText(placeholder);
+
+        searchField.addFocusListener(new FocusAdapter() {
+            @Override
+            public void focusGained(FocusEvent e) {
+                if (searchField.getText().equals(placeholder)) {
+                    searchField.setText("");
+                    searchField.setForeground(Color.BLACK);
+                }
+                searchPanel.setBorder(BorderFactory.createCompoundBorder(
+                        BorderFactory.createLineBorder(new Color(70, 130, 180), 2),
+                        BorderFactory.createEmptyBorder(2, 7, 2, 7)
+                ));
+            }
+
+            @Override
+            public void focusLost(FocusEvent e) {
+                if (searchField.getText().isEmpty()) {
+                    searchField.setForeground(Color.GRAY);
+                    searchField.setText(placeholder);
+                }
+                searchPanel.setBorder(BorderFactory.createCompoundBorder(
+                        BorderFactory.createLineBorder(new Color(200, 200, 200), 1),
+                        BorderFactory.createEmptyBorder(3, 8, 3, 8)
+                ));
+            }
+        });
+
+        // Search filter logic
+        searchField.getDocument().addDocumentListener(new DocumentListener() {
+            public void insertUpdate(DocumentEvent e) { filterTable(searchField.getText()); }
+            public void removeUpdate(DocumentEvent e) { filterTable(searchField.getText()); }
+            public void changedUpdate(DocumentEvent e) { filterTable(searchField.getText()); }
+
+            private void filterTable(String text) {
+                if (text.equals(placeholder)) return;
+
+                if (text.isEmpty()) {
+                    ((TableRowSorter) jsFileTable.getRowSorter()).setRowFilter(null);
+                } else {
+                    ((TableRowSorter) jsFileTable.getRowSorter()).setRowFilter(
+                            RowFilter.regexFilter("(?i)" + text)
+                    );
+                }
+            }
+        });
+
+        searchPanel.add(searchIcon, BorderLayout.WEST);
+        searchPanel.add(searchField, BorderLayout.CENTER);
+
+        return searchPanel;
+    }
+
+    private JPanel createStyledSearchBoxDark(String placeholder) {
+        JPanel searchPanel = new JPanel(new BorderLayout());
+        searchPanel.setBackground(new Color(50, 53, 55));
+        searchPanel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(80, 83, 85), 1),
+                BorderFactory.createEmptyBorder(3, 8, 3, 8)
+        ));
+
+        JLabel searchIcon = new JLabel("🔍");
+        searchIcon.setForeground(Color.LIGHT_GRAY);
+        searchIcon.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 5));
+
+        JTextField searchField = new JTextField();
+        searchField.setBorder(BorderFactory.createEmptyBorder());
+        searchField.setFont(new Font("Consolas", Font.PLAIN, 12));
+        searchField.setBackground(new Color(50, 53, 55));
+        searchField.setForeground(Color.LIGHT_GRAY);
+        searchField.setCaretColor(Color.WHITE);
+        searchField.setText(placeholder);
+
+        searchField.addFocusListener(new FocusAdapter() {
+            @Override
+            public void focusGained(FocusEvent e) {
+                if (searchField.getText().equals(placeholder)) {
+                    searchField.setText("");
+                    searchField.setForeground(Color.WHITE);
+                }
+                searchPanel.setBorder(BorderFactory.createCompoundBorder(
+                        BorderFactory.createLineBorder(new Color(70, 130, 180), 2),
+                        BorderFactory.createEmptyBorder(2, 7, 2, 7)
+                ));
+            }
+
+            @Override
+            public void focusLost(FocusEvent e) {
+                if (searchField.getText().isEmpty()) {
+                    searchField.setForeground(Color.LIGHT_GRAY);
+                    searchField.setText(placeholder);
+                }
+                searchPanel.setBorder(BorderFactory.createCompoundBorder(
+                        BorderFactory.createLineBorder(new Color(80, 83, 85), 1),
+                        BorderFactory.createEmptyBorder(3, 8, 3, 8)
+                ));
+            }
+        });
+
+        searchField.getDocument().addDocumentListener(new DocumentListener() {
+            public void insertUpdate(DocumentEvent e) { filterEndpoints(searchField.getText()); }
+            public void removeUpdate(DocumentEvent e) { filterEndpoints(searchField.getText()); }
+            public void changedUpdate(DocumentEvent e) { filterEndpoints(searchField.getText()); }
+
+            private void filterEndpoints(String searchText) {
+                if (searchText.equals(placeholder)) return;
+
+                javax.swing.text.Highlighter highlighter = endpointsTextArea.getHighlighter();
+                highlighter.removeAllHighlights();
+
+                if (searchText.isEmpty()) {
+                    return;
+                }
+
+                String content = endpointsTextArea.getText();
+                int index = content.toLowerCase().indexOf(searchText.toLowerCase());
+                while (index >= 0) {
+                    try {
+                        highlighter.addHighlight(index, index + searchText.length(),
+                                new javax.swing.text.DefaultHighlighter.DefaultHighlightPainter(Color.YELLOW));
+                        index = content.toLowerCase().indexOf(searchText.toLowerCase(), index + 1);
+                    } catch (javax.swing.text.BadLocationException ex) {
+                        // Ignore
+                    }
+                }
+            }
+        });
+
+        searchPanel.add(searchIcon, BorderLayout.WEST);
+        searchPanel.add(searchField, BorderLayout.CENTER);
+
+        return searchPanel;
     }
 }
