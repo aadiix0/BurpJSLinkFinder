@@ -78,41 +78,72 @@ public class MainTab {
     private void initializeLeftPanel() {
         JPanel leftPanel = new JPanel(new BorderLayout());
 
-        // TOP TOOLBAR
-        JPanel toolbarPanel = new JPanel(new BorderLayout());
-        toolbarPanel.setBackground(new Color(245, 245, 245));
-        toolbarPanel.setBorder(BorderFactory.createEmptyBorder(3, 3, 3, 3));
+        // TOP TOOLBAR - Use FlowLayout to prevent expansion
+        JPanel toolbarPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 3));
+        toolbarPanel.setBackground(new Color(240, 240, 240));
 
-        // CENTER: Search box
-        JPanel searchPanel = createLeftSearchPanel();
+        // Search panel - FIXED SIZE
+        JPanel searchWrapper = new JPanel(new BorderLayout());
+        searchWrapper.setBackground(new Color(240, 240, 240));
+        searchWrapper.setPreferredSize(new Dimension(200, 28));  // FIXED width
+        searchWrapper.setMaximumSize(new Dimension(200, 28));    // Prevent expansion
+        searchWrapper.setMinimumSize(new Dimension(200, 28));    // Minimum size
 
-        // EAST: Refresh button
+        JLabel searchIcon = new JLabel("🔍 ");
+        JTextField searchField = new JTextField();
+        searchField.setPreferredSize(new Dimension(170, 24));
+        searchField.setMaximumSize(new Dimension(170, 24));
+        searchField.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(Color.LIGHT_GRAY, 1),
+            BorderFactory.createEmptyBorder(2, 5, 2, 5)
+        ));
+
+        // Search logic
+        searchField.getDocument().addDocumentListener(new DocumentListener() {
+            public void insertUpdate(DocumentEvent e) { filter(); }
+            public void removeUpdate(DocumentEvent e) { filter(); }
+            public void changedUpdate(DocumentEvent e) { filter(); }
+
+            private void filter() {
+                String text = searchField.getText();
+                TableRowSorter<TableModel> sorter = (TableRowSorter<TableModel>) jsFileTable.getRowSorter();
+                if (text.isEmpty()) {
+                    sorter.setRowFilter(null);
+                } else {
+                    sorter.setRowFilter(RowFilter.regexFilter("(?i)" + text));
+                }
+            }
+        });
+
+        searchWrapper.add(searchIcon, BorderLayout.WEST);
+        searchWrapper.add(searchField, BorderLayout.CENTER);
+
+        // Refresh button - FIXED SIZE
         JButton refreshButton = new JButton("⟳");
+        refreshButton.setPreferredSize(new Dimension(32, 28));
+        refreshButton.setMaximumSize(new Dimension(32, 28));
+        refreshButton.setMinimumSize(new Dimension(32, 28));
         refreshButton.setToolTipText("Refresh all JS files");
-        refreshButton.setFont(new Font("Arial", Font.BOLD, 14));
-        refreshButton.setPreferredSize(new Dimension(32, 26));  // Compact
         refreshButton.setFocusPainted(false);
         refreshButton.setBackground(new Color(70, 130, 180));
         refreshButton.setForeground(Color.WHITE);
-        refreshButton.setBorder(BorderFactory.createLineBorder(new Color(50, 100, 150), 1));
         refreshButton.setCursor(new Cursor(Cursor.HAND_CURSOR));
 
         refreshButton.addActionListener(e -> {
             refreshButton.setEnabled(false);
             refreshButton.setText("⏳");
-
             new Thread(() -> {
                 jsFileRefresher.refreshAllJSFiles();
                 SwingUtilities.invokeLater(() -> {
                     refreshButton.setEnabled(true);
                     refreshButton.setText("⟳");
-                    JOptionPane.showMessageDialog(null, "Refresh complete!");
                 });
             }).start();
         });
 
-        toolbarPanel.add(searchPanel, BorderLayout.CENTER);
-        toolbarPanel.add(refreshButton, BorderLayout.EAST);
+        // Add to toolbar with FlowLayout (prevents expansion)
+        toolbarPanel.add(searchWrapper);
+        toolbarPanel.add(refreshButton);
 
         // Table
         jsFileTable = new JTable(jsFileTableModel);
@@ -175,8 +206,8 @@ public class MainTab {
         jsFileTable.getColumnModel().getColumn(3).setPreferredWidth(100);
 
         jsFileTable.setFillsViewportHeight(true);
-        jsFileTable.setShowGrid(true);
-        jsFileTable.setGridColor(new Color(220, 220, 220));
+        jsFileTable.setShowGrid(false);
+        jsFileTable.setIntercellSpacing(new Dimension(0, 0));
         jsFileTable.setRowHeight(22);
 
         // Configure Status column (column index 3)
@@ -286,7 +317,7 @@ public class MainTab {
                     // Use DEFAULT table background (no color override)
                     if (!isSelected) {
                         setBackground(null); // Use table's default background
-                        setForeground(Color.BLACK);
+                        setForeground(new Color(80, 80, 80));
                     } else {
                         // Use default selection colors
                         setBackground(table.getSelectionBackground());
@@ -301,9 +332,9 @@ public class MainTab {
                             setFont(new Font(getFont().getName(), Font.BOLD, 12));
                             setText(value.toString());
                         } else {
-                            setFont(new Font(getFont().getName(), Font.PLAIN, 12));
+                            setFont(new Font(getFont().getName(), Font.PLAIN, 11));
                             // Indent child rows for clarity
-                            setText("   " + value);
+                            setText("    " + value);
                         }
                     }
                     return this;
@@ -311,7 +342,7 @@ public class MainTab {
             }
         );
 
-        leftPanel.add(searchPanel, BorderLayout.NORTH);
+        leftPanel.add(toolbarPanel, BorderLayout.NORTH);
         leftPanel.add(scrollPane, BorderLayout.CENTER);
 
         // Step 2: Assign the composite panel directly, removing the outer scroll pane
