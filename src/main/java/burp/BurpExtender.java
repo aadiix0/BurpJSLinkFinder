@@ -22,7 +22,7 @@ public class BurpExtender implements BurpExtension {
             SwingUtilities.invokeLater(() -> {
                 try {
                     api.logging().logToOutput("Step 1: Creating MainTab");
-                    MainTab mainTab = new MainTab(api, concurrentData);
+                    MainTab mainTab = new MainTab(api, concurrentData, dataPersistence);
                     api.logging().logToOutput("Step 2: MainTab created successfully");
 
                     api.logging().logToOutput("Step 3: Getting component");

@@ -7,9 +7,13 @@ import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import java.awt.*;
+import java.awt.datatransfer.Clipboard;
+import java.awt.datatransfer.StringSelection;
+import java.awt.event.ActionEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.lang.reflect.Type;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import javax.swing.table.DefaultTableCellRenderer;
@@ -30,12 +34,17 @@ public class MainTab {
     private Component rightComponent;
     private final Map<String, String> userNotes = new ConcurrentHashMap<>();
     private String currentlyDisplayedKey = null;
+    private JSFileRefresher jsFileRefresher;
+    private DataPersistence dataPersistence;
 
-    public MainTab(MontoyaApi api, ConcurrentHashMap<String, JSFileData> allJSFiles) {
+
+    public MainTab(MontoyaApi api, ConcurrentHashMap<String, JSFileData> allJSFiles, DataPersistence dataPersistence) {
         this.api = api;
         this.allJSFiles = allJSFiles;
+        this.dataPersistence = dataPersistence;
 
         try {
+            this.jsFileRefresher = new JSFileRefresher(api, allJSFiles, jsFileTableModel);
             // Load user notes
             String savedNotes = api.persistence().extensionData().getString("user_notes");
             if (savedNotes != null && !savedNotes.isEmpty()) {
@@ -62,15 +71,17 @@ public class MainTab {
     }
 
     private void initializeLeftPanel() {
-        // This is the main component for the left side
         JPanel leftPanel = new JPanel(new BorderLayout());
 
-        // Search box at top
-        JPanel searchPanel = new JPanel(new BorderLayout());
-        searchPanel.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
+        // Top toolbar with search and refresh
+        JPanel toolbarPanel = new JPanel(new BorderLayout());
+        toolbarPanel.setBorder(BorderFactory.createEmptyBorder(3, 3, 3, 3));
 
-        JTextField searchField = new JTextField();
-        searchField.setToolTipText("Search JS files...");
+        // Search box (compact)
+        JPanel searchPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+        JLabel searchIcon = new JLabel("🔍");
+        JTextField searchField = new JTextField(15); // Compact width
+        searchField.setToolTipText("Search JS files");
 
         searchField.getDocument().addDocumentListener(new DocumentListener() {
             public void insertUpdate(DocumentEvent e) { filterTable(); }
@@ -78,24 +89,44 @@ public class MainTab {
             public void changedUpdate(DocumentEvent e) { filterTable(); }
 
             private void filterTable() {
-                String searchText = searchField.getText().toLowerCase();
-                TableRowSorter<TableModel> sorter = (TableRowSorter<TableModel>) jsFileTable.getRowSorter();
-
+                String searchText = searchField.getText();
                 if (searchText.isEmpty()) {
-                    sorter.setRowFilter(null);
+                    ((TableRowSorter) jsFileTable.getRowSorter()).setRowFilter(null);
                 } else {
-                    sorter.setRowFilter(RowFilter.regexFilter("(?i)" + searchText));
+                    ((TableRowSorter) jsFileTable.getRowSorter()).setRowFilter(
+                            RowFilter.regexFilter("(?i)" + searchText)
+                    );
                 }
             }
         });
 
-        searchPanel.add(new JLabel("🔍 "), BorderLayout.WEST);
-        searchPanel.add(searchField, BorderLayout.CENTER);
+        searchPanel.add(searchIcon);
+        searchPanel.add(searchField);
 
+        // Refresh button
+        JButton refreshButton = new JButton("⟳ Refresh");
+        refreshButton.setToolTipText("Re-scan all JS files for new endpoints");
+        refreshButton.addActionListener(e -> {
+            refreshButton.setEnabled(false);
+            refreshButton.setText("Refreshing...");
+
+            new Thread(() -> {
+                jsFileRefresher.refreshAllJSFiles();
+
+                SwingUtilities.invokeLater(() -> {
+                    refreshButton.setEnabled(true);
+                    refreshButton.setText("⟳ Refresh");
+                    JOptionPane.showMessageDialog(null, "Refresh complete!");
+                });
+            }).start();
+        });
+
+        toolbarPanel.add(searchPanel, BorderLayout.WEST);
+        toolbarPanel.add(refreshButton, BorderLayout.EAST);
+
+        // Table
         jsFileTable = new JTable(jsFileTableModel);
         jsFileTable.setFillsViewportHeight(true);
-        jsFileTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-
         TableRowSorter<TableModel> sorter = new TableRowSorter<>(jsFileTableModel);
         jsFileTable.setRowSorter(sorter);
 
@@ -104,6 +135,45 @@ public class MainTab {
         for (int i = 0; i < jsFileTable.getColumnCount(); i++) {
             sorter.setSortable(i, false);
         }
+
+        // Enable multi-selection
+        jsFileTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+
+        // Add right-click menu
+        JPopupMenu contextMenu = new JPopupMenu();
+
+        // Option 1: Copy URLs
+        JMenuItem copyItem = new JMenuItem("Copy Selected URLs");
+        copyItem.addActionListener(e -> copySelectedURLs());
+
+        // Option 2: Delete
+        JMenuItem deleteItem = new JMenuItem("Delete Selected");
+        deleteItem.addActionListener(e -> deleteSelectedRows());
+
+        // Option 3: Move to Blacklist
+        JMenuItem blacklistItem = new JMenuItem("Move to Blacklist");
+        blacklistItem.addActionListener(e -> moveToBlacklist());
+
+        contextMenu.add(copyItem);
+        contextMenu.add(deleteItem);
+        contextMenu.addSeparator();  // Visual separator
+        contextMenu.add(blacklistItem);
+
+        jsFileTable.setComponentPopupMenu(contextMenu);
+
+
+        // Add Ctrl+A for select all
+        jsFileTable.getInputMap().put(
+                KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_A, java.awt.event.InputEvent.CTRL_DOWN_MASK),
+                "selectAll"
+        );
+        jsFileTable.getActionMap().put("selectAll", new AbstractAction() {
+            @Override
+            public void actionPerformed(java.awt.event.ActionEvent e) {
+                jsFileTable.selectAll();
+            }
+        });
+
 
         jsFileTable.getColumnModel().getColumn(0).setPreferredWidth(50);
         jsFileTable.getColumnModel().getColumn(1).setPreferredWidth(500);
@@ -120,9 +190,11 @@ public class MainTab {
 
                     super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
 
-                    // NO COLORS - always white background
-                    setBackground(Color.WHITE);
-                    setForeground(Color.BLACK);
+                    // Use DEFAULT table background (no color override)
+                    if (!isSelected) {
+                        setBackground(null); // Use table's default background
+                        setForeground(Color.BLACK);
+                    }
 
                     int modelRow = table.convertRowIndexToModel(row);
                     TableRow tableRow = jsFileTableModel.getRowData(modelRow);
@@ -403,5 +475,103 @@ public class MainTab {
 
     public JSFileTableModel getTableModel() {
         return jsFileTableModel;
+    }
+
+    private void copySelectedURLs() {
+        int[] selectedRows = jsFileTable.getSelectedRows();
+        if (selectedRows.length == 0) return;
+
+        StringBuilder sb = new StringBuilder();
+        for (int viewRow : selectedRows) {
+            int modelRow = jsFileTable.convertRowIndexToModel(viewRow);
+            TableRow row = jsFileTableModel.getRowData(modelRow);
+
+            if (row != null && row.isParent()) {
+                sb.append(row.getJsFileUrl()).append("\n");
+            }
+        }
+
+        // Copy to clipboard
+        java.awt.datatransfer.StringSelection selection = new java.awt.datatransfer.StringSelection(sb.toString());
+        java.awt.datatransfer.Clipboard clipboard = java.awt.Toolkit.getDefaultToolkit().getSystemClipboard();
+        clipboard.setContents(selection, selection);
+
+        JOptionPane.showMessageDialog(null, "Copied " + selectedRows.length + " URLs to clipboard");
+    }
+
+    private void deleteSelectedRows() {
+        int[] selectedRows = jsFileTable.getSelectedRows();
+        if (selectedRows.length == 0) return;
+
+        int confirm = JOptionPane.showConfirmDialog(null,
+                "Delete " + selectedRows.length + " selected JS files?",
+                "Confirm Delete",
+                JOptionPane.YES_NO_OPTION);
+
+        if (confirm == JOptionPane.YES_OPTION) {
+            java.util.List<String> deletedUrls = new java.util.ArrayList<>();
+            // Delete in reverse order to maintain indices
+            for (int i = selectedRows.length - 1; i >= 0; i--) {
+                int modelRow = jsFileTable.convertRowIndexToModel(selectedRows[i]);
+                TableRow row = jsFileTableModel.getRowData(modelRow);
+
+                if (row != null && row.isParent()) {
+                    String jsFileUrl = row.getJsFileUrl();
+                    deletedUrls.add(jsFileUrl);
+
+                    // Remove from data
+                    allJSFiles.remove(jsFileUrl);
+                    jsFileTableModel.removeRow(modelRow);
+                }
+            }
+
+            dataPersistence.saveData(allJSFiles);
+            api.logging().logToOutput("Deleted and persisted: " + deletedUrls.size() + " JS files");
+
+            JOptionPane.showMessageDialog(null, "Deleted " + selectedRows.length + " JS files");
+        }
+    }
+
+    private void moveToBlacklist() {
+        int[] selectedRows = jsFileTable.getSelectedRows();
+        if (selectedRows.length == 0) return;
+
+        int confirm = JOptionPane.showConfirmDialog(null,
+                "Move " + selectedRows.length + " JS files to blacklist?",
+                "Confirm Blacklist",
+                JOptionPane.YES_NO_OPTION);
+
+        if (confirm == JOptionPane.YES_OPTION) {
+            java.util.List<String> blacklistedUrls = new java.util.ArrayList<>();
+
+            // Collect URLs
+            for (int i = selectedRows.length - 1; i >= 0; i--) {
+                int modelRow = jsFileTable.convertRowIndexToModel(selectedRows[i]);
+                TableRow row = jsFileTableModel.getRowData(modelRow);
+
+                if (row != null && row.isParent()) {
+                    String jsFileUrl = row.getJsFileUrl();
+                    blacklistedUrls.add(jsFileUrl);
+
+                    // Remove from Links tab
+                    allJSFiles.remove(jsFileUrl);
+                    jsFileTableModel.removeRow(modelRow);
+                }
+            }
+
+            // Add to blacklist (for Blacklist tab - future feature)
+            for (String url : blacklistedUrls) {
+                // Store in blacklist data structure
+                api.persistence().extensionData().setString("blacklist_" + url.hashCode(), url);
+            }
+
+            // Persist changes
+            dataPersistence.saveData(allJSFiles);
+
+            api.logging().logToOutput("Blacklisted " + blacklistedUrls.size() + " JS files");
+
+            JOptionPane.showMessageDialog(null,
+                    "Moved " + blacklistedUrls.size() + " files to blacklist");
+        }
     }
 }

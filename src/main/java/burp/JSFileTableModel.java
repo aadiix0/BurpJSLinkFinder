@@ -34,41 +34,61 @@ public class JSFileTableModel extends AbstractTableModel {
     }
 
     public void addJSFile(String jsFileUrl, List<Endpoint> endpoints) {
+        api.logging().logToOutput("Processing JS file: " + jsFileUrl);
 
-        api.logging().logToOutput("=== Adding JS file: " + jsFileUrl);
-        api.logging().logToOutput("=== Number of endpoints: " + endpoints.size());
-        api.logging().logToOutput("=== Current row count: " + rows.size());
+        // Convert to string URLs
+        List<String> newEndpointUrls = endpoints.stream()
+                .map(Endpoint::getUrl)
+                .collect(Collectors.toList());
 
-        // Check if this JS file already exists
-        for (TableRow row : rows) {
-            if (row.isParent() && row.getJsFileUrl().equals(jsFileUrl)) {
-                api.logging().logToOutput("=== JS file already exists, skipping");
-                return;  // Already exists, don't add again
+        JSFileData jsData = allJSFilesData.get(jsFileUrl);
+
+        if (jsData == null) {
+            // FIRST TIME - Add to First Finding
+            jsData = new JSFileData(jsFileUrl, newEndpointUrls);
+            allJSFilesData.put(jsFileUrl, jsData);
+
+            // Add parent row
+            TableRow newRow = new TableRow(rows.size() + 1, jsFileUrl, endpoints.size(), "New");
+            rows.add(newRow);
+            fireTableRowsInserted(rows.size() - 1, rows.size() - 1);
+
+            api.logging().logToOutput("✓ New JS file added with " + endpoints.size() + " endpoints");
+
+        } else {
+            // SUBSEQUENT SCAN - Check for new endpoints
+            List<String> firstFinding = jsData.getFirstFinding();
+            List<String> latest = jsData.getLatest();
+            List<String> newEndpoints = new ArrayList<>();
+
+            for (String url : newEndpointUrls) {
+                // If not in First Finding AND not in Latest, it's NEW
+                if (!firstFinding.contains(url) && !latest.contains(url)) {
+                    newEndpoints.add(url);
+                }
+            }
+
+            if (!newEndpoints.isEmpty()) {
+                // Add to Latest section
+                latest.addAll(newEndpoints);
+                jsData.setLatest(latest);
+
+                api.logging().logToOutput("✓ Found " + newEndpoints.size() + " NEW endpoints for " + jsFileUrl);
+
+                // Update row count
+                for (int i = 0; i < rows.size(); i++) {
+                    TableRow row = rows.get(i);
+                    if (row.isParent() && row.getJsFileUrl().equals(jsFileUrl)) {
+                        int newTotal = firstFinding.size() + latest.size();
+                        row.setCount(newTotal);
+                        fireTableRowsUpdated(i, i);
+                        break;
+                    }
+                }
+            } else {
+                api.logging().logToOutput("✓ No new endpoints for " + jsFileUrl);
             }
         }
-
-        // Convert endpoints to strings
-        List<String> endpointUrls = new ArrayList<>();
-        for (Endpoint ep : endpoints) {
-            endpointUrls.add(ep.getUrl());
-        }
-
-        // Create JSFileData for this JS file
-        JSFileData jsData = new JSFileData(jsFileUrl, endpointUrls);
-        allJSFilesData.put(jsFileUrl, jsData);
-
-        // Create NEW parent row
-        int rowNum = rows.size() + 1;
-        TableRow newParentRow = new TableRow(rowNum, jsFileUrl, endpoints.size(), "New");
-
-        // Add to rows list
-        rows.add(newParentRow);
-
-        api.logging().logToOutput("=== Added new parent row");
-        api.logging().logToOutput("=== New row count: " + rows.size());
-
-        // Notify table
-        fireTableRowsInserted(rows.size() - 1, rows.size() - 1);
     }
 
     private int getNextRowNumber() {
@@ -150,31 +170,116 @@ public class JSFileTableModel extends AbstractTableModel {
         TableRow parentRow = rows.get(rowIndex);
 
         if (!parentRow.isExpanded()) {
-            // Get endpoints for THIS JS file only
+            // EXPAND
             String jsFileUrl = parentRow.getJsFileUrl();
             JSFileData jsData = allJSFilesData.get(jsFileUrl);
 
             if (jsData != null) {
-                // Create category row
-                List<String> endpoints = jsData.getFirstFinding();
-                TableRow categoryRow = new TableRow(
-                    "[+] First Finding [" + endpoints.size() + " endpoints]",
-                    endpoints.size(),
-                    "First Finding"
+                // Add First Finding
+                TableRow firstFindingRow = new TableRow(
+                        "[+] First Finding [" + jsData.getFirstFinding().size() + " endpoints]",
+                        jsData.getFirstFinding().size(),
+                        "First Finding"
                 );
+                rows.add(rowIndex + 1, firstFindingRow);
 
-                // Insert AFTER parent row
-                rows.add(rowIndex + 1, categoryRow);
+                // Add Latest if exists
+                if (!jsData.getLatest().isEmpty()) {
+                    TableRow latestRow = new TableRow(
+                            "[+] Latest [" + jsData.getLatest().size() + " endpoints]",
+                            jsData.getLatest().size(),
+                            "Latest"
+                    );
+                    rows.add(rowIndex + 2, latestRow);
+                    fireTableRowsInserted(rowIndex + 1, rowIndex + 2);
+                } else {
+                    fireTableRowsInserted(rowIndex + 1, rowIndex + 1);
+                }
+
                 parentRow.setExpanded(true);
-
-                fireTableRowsInserted(rowIndex + 1, rowIndex + 1);
             }
-        } else {
-            // Collapse - remove child row
-            rows.remove(rowIndex + 1);
-            parentRow.setExpanded(false);
 
-            fireTableRowsDeleted(rowIndex + 1, rowIndex + 1);
+        } else {
+            // COLLAPSE
+            int removeCount = 0;
+            for (int i = rowIndex + 1; i < rows.size(); i++) {
+                if (rows.get(i).isParent()) break;
+                removeCount++;
+            }
+
+            for (int i = 0; i < removeCount; i++) {
+                rows.remove(rowIndex + 1);
+            }
+
+            fireTableRowsDeleted(rowIndex + 1, rowIndex + removeCount);
+            parentRow.setExpanded(false);
+        }
+    }
+
+    public void updateJSFileCount(String jsFileUrl, int newCount) {
+        for (int i = 0; i < rows.size(); i++) {
+            TableRow row = rows.get(i);
+            if (row.isParent() && row.getJsFileUrl().equals(jsFileUrl)) {
+                row.setCount(newCount);
+                fireTableRowsUpdated(i, i);
+                break;
+            }
+        }
+    }
+
+    public void ensureLatestSectionVisible(String jsFileUrl) {
+        // Find parent row
+        for (int i = 0; i < rows.size(); i++) {
+            TableRow row = rows.get(i);
+
+            if (row.isParent() && row.getJsFileUrl().equals(jsFileUrl)) {
+
+                // Check if expanded
+                if (row.isExpanded()) {
+                    // Check if Latest section already exists
+                    boolean hasLatest = false;
+
+                    for (int j = i + 1; j < rows.size(); j++) {
+                        TableRow childRow = rows.get(j);
+                        if (childRow.isParent()) break; // Hit next parent
+
+                        if (childRow.getCategory() != null && childRow.getCategory().equals("Latest")) {
+                            hasLatest = true;
+                            break;
+                        }
+                    }
+
+                    if (!hasLatest) {
+                        // Add Latest section
+                        JSFileData jsData = allJSFilesData.get(jsFileUrl);
+                        if (jsData != null && !jsData.getLatest().isEmpty()) {
+                            TableRow latestRow = new TableRow(
+                                    "[+] Latest [" + jsData.getLatest().size() + " endpoints]",
+                                    jsData.getLatest().size(),
+                                    "Latest"
+                            );
+
+                            // Insert after First Finding
+                            rows.add(i + 2, latestRow);
+                            fireTableRowsInserted(i + 2, i + 2);
+
+                            api.logging().logToOutput("✓ Added Latest section for " + jsFileUrl);
+                        }
+                    }
+                } else {
+                    // Auto-expand to show Latest
+                    toggleRow(i);
+                }
+
+                break;
+            }
+        }
+    }
+
+    public void removeRow(int rowIndex) {
+        if (rowIndex >= 0 && rowIndex < rows.size()) {
+            rows.remove(rowIndex);
+            fireTableRowsDeleted(rowIndex, rowIndex);
         }
     }
 
