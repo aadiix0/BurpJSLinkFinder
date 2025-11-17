@@ -78,48 +78,50 @@ public class MainTab {
     private void initializeLeftPanel() {
         JPanel leftPanel = new JPanel(new BorderLayout());
 
-        // TOP TOOLBAR with search and refresh
+        // TOP TOOLBAR
         JPanel toolbarPanel = new JPanel(new BorderLayout());
         toolbarPanel.setBackground(new Color(245, 245, 245));
-        toolbarPanel.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
+        toolbarPanel.setBorder(BorderFactory.createEmptyBorder(3, 3, 3, 3));
 
-        // LEFT: Search box with icon inside
-        JPanel searchPanel = createStyledSearchBox("Search JS files...");
+        // LEFT: Search box
+        JPanel searchPanel = createLeftSearchPanel();
 
         // RIGHT: Refresh button
-        JButton refreshButton = new JButton("⟳ Refresh");
+        JButton refreshButton = new JButton("⟳");
+        refreshButton.setToolTipText("Refresh all JS files");
+        refreshButton.setFont(new Font("Arial", Font.BOLD, 14));
+        refreshButton.setPreferredSize(new Dimension(32, 26));  // Compact
         refreshButton.setFocusPainted(false);
-        refreshButton.setFont(new Font("Arial", Font.BOLD, 12));
-        refreshButton.setBackground(new Color(70, 130, 180));  // Steel blue
+        refreshButton.setBackground(new Color(70, 130, 180));
         refreshButton.setForeground(Color.WHITE);
-        refreshButton.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(new Color(50, 100, 150), 1),
-                BorderFactory.createEmptyBorder(5, 15, 5, 15)
-        ));
+        refreshButton.setBorder(BorderFactory.createLineBorder(new Color(50, 100, 150), 1));
         refreshButton.setCursor(new Cursor(Cursor.HAND_CURSOR));
-        refreshButton.setToolTipText("Re-scan all JS files for new endpoints");
 
         refreshButton.addActionListener(e -> {
             refreshButton.setEnabled(false);
-            refreshButton.setText("⟳ Refreshing...");
+            refreshButton.setText("⏳");
 
             new Thread(() -> {
                 jsFileRefresher.refreshAllJSFiles();
                 SwingUtilities.invokeLater(() -> {
                     refreshButton.setEnabled(true);
-                    refreshButton.setText("⟳ Refresh");
+                    refreshButton.setText("⟳");
                     JOptionPane.showMessageDialog(null, "Refresh complete!");
                 });
             }).start();
         });
 
-        toolbarPanel.add(searchPanel, BorderLayout.CENTER);
+        toolbarPanel.add(searchPanel, BorderLayout.WEST);
         toolbarPanel.add(refreshButton, BorderLayout.EAST);
 
         // Table
+        leftPanel.add(toolbarPanel, BorderLayout.NORTH);
         jsFileTable = new JTable(jsFileTableModel);
+        leftPanel.add(new JScrollPane(jsFileTable), BorderLayout.CENTER);
         TableRowSorter<TableModel> sorter = new TableRowSorter<>(jsFileTableModel);
         jsFileTable.setRowSorter(sorter);
+
+        leftComponent = leftPanel;
 
         // Disable sorting on all columns to protect the parent-child hierarchy,
         // but keep the sorter for filtering via the search box.
@@ -310,9 +312,7 @@ public class MainTab {
         rightPanel.setBackground(new Color(60, 63, 65));
 
         // TOP: Styled search box
-        JPanel searchPanel = createStyledSearchBoxDark("Search endpoints...");
-        searchPanel.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
-
+        JPanel searchPanel = createRightSearchPanel();
 
         endpointsTextArea = new JTextArea();
         endpointsTextArea.setFont(new Font("Consolas", Font.PLAIN, 12));
@@ -518,64 +518,33 @@ public class MainTab {
         }
     }
 
-    private JPanel createStyledSearchBox(String placeholder) {
-        JPanel searchPanel = new JPanel(new BorderLayout());
-        searchPanel.setBackground(Color.WHITE);
-        searchPanel.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(new Color(200, 200, 200), 1),
-                BorderFactory.createEmptyBorder(3, 8, 3, 8)
-        ));
+    private JPanel createLeftSearchPanel() {
+        JPanel searchPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
+        searchPanel.setBackground(new Color(245, 245, 245));  // Light gray
+        searchPanel.setBorder(BorderFactory.createEmptyBorder(2, 3, 2, 3));
 
-        // Search icon label
+        // Search icon
         JLabel searchIcon = new JLabel("🔍");
-        searchIcon.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 14));
-        searchIcon.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 5));
+        searchIcon.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 12));
 
-        // Search text field
-        JTextField searchField = new JTextField();
-        searchField.setBorder(BorderFactory.createEmptyBorder());
-        searchField.setFont(new Font("Arial", Font.PLAIN, 12));
-        searchField.setOpaque(false);
+        // Compact search field
+        JTextField searchField = new JTextField(15);  // Width: 15 chars
+        searchField.setFont(new Font("Arial", Font.PLAIN, 11));
+        searchField.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(180, 180, 180), 1),
+                BorderFactory.createEmptyBorder(2, 5, 2, 5)
+        ));
+        searchField.setBackground(Color.WHITE);
+        searchField.setPreferredSize(new Dimension(150, 22));  // Compact height
 
-        // Placeholder text
-        searchField.setForeground(Color.GRAY);
-        searchField.setText(placeholder);
-
-        searchField.addFocusListener(new FocusAdapter() {
-            @Override
-            public void focusGained(FocusEvent e) {
-                if (searchField.getText().equals(placeholder)) {
-                    searchField.setText("");
-                    searchField.setForeground(Color.BLACK);
-                }
-                searchPanel.setBorder(BorderFactory.createCompoundBorder(
-                        BorderFactory.createLineBorder(new Color(70, 130, 180), 2),
-                        BorderFactory.createEmptyBorder(2, 7, 2, 7)
-                ));
-            }
-
-            @Override
-            public void focusLost(FocusEvent e) {
-                if (searchField.getText().isEmpty()) {
-                    searchField.setForeground(Color.GRAY);
-                    searchField.setText(placeholder);
-                }
-                searchPanel.setBorder(BorderFactory.createCompoundBorder(
-                        BorderFactory.createLineBorder(new Color(200, 200, 200), 1),
-                        BorderFactory.createEmptyBorder(3, 8, 3, 8)
-                ));
-            }
-        });
-
-        // Search filter logic
+        // Search logic
         searchField.getDocument().addDocumentListener(new DocumentListener() {
-            public void insertUpdate(DocumentEvent e) { filterTable(searchField.getText()); }
-            public void removeUpdate(DocumentEvent e) { filterTable(searchField.getText()); }
-            public void changedUpdate(DocumentEvent e) { filterTable(searchField.getText()); }
+            public void insertUpdate(DocumentEvent e) { filterTable(); }
+            public void removeUpdate(DocumentEvent e) { filterTable(); }
+            public void changedUpdate(DocumentEvent e) { filterTable(); }
 
-            private void filterTable(String text) {
-                if (text.equals(placeholder)) return;
-
+            private void filterTable() {
+                String text = searchField.getText();
                 if (text.isEmpty()) {
                     ((TableRowSorter) jsFileTable.getRowSorter()).setRowFilter(null);
                 } else {
@@ -586,57 +555,33 @@ public class MainTab {
             }
         });
 
-        searchPanel.add(searchIcon, BorderLayout.WEST);
-        searchPanel.add(searchField, BorderLayout.CENTER);
+        searchPanel.add(searchIcon);
+        searchPanel.add(searchField);
 
         return searchPanel;
     }
 
-    private JPanel createStyledSearchBoxDark(String placeholder) {
-        JPanel searchPanel = new JPanel(new BorderLayout());
-        searchPanel.setBackground(new Color(50, 53, 55));
-        searchPanel.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(new Color(80, 83, 85), 1),
-                BorderFactory.createEmptyBorder(3, 8, 3, 8)
-        ));
+    private JPanel createRightSearchPanel() {
+        JPanel searchPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
+        searchPanel.setBackground(new Color(50, 53, 55));  // Dark gray
+        searchPanel.setBorder(BorderFactory.createEmptyBorder(2, 3, 2, 3));
 
+        // Search icon
         JLabel searchIcon = new JLabel("🔍");
+        searchIcon.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 12));
         searchIcon.setForeground(Color.LIGHT_GRAY);
-        searchIcon.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 5));
 
-        JTextField searchField = new JTextField();
-        searchField.setBorder(BorderFactory.createEmptyBorder());
-        searchField.setFont(new Font("Consolas", Font.PLAIN, 12));
-        searchField.setBackground(new Color(50, 53, 55));
+        // Compact search field
+        JTextField searchField = new JTextField(20);
+        searchField.setFont(new Font("Consolas", Font.PLAIN, 11));
+        searchField.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(80, 83, 85), 1),
+                BorderFactory.createEmptyBorder(2, 5, 2, 5)
+        ));
+        searchField.setBackground(new Color(60, 63, 65));
         searchField.setForeground(Color.LIGHT_GRAY);
         searchField.setCaretColor(Color.WHITE);
-        searchField.setText(placeholder);
-
-        searchField.addFocusListener(new FocusAdapter() {
-            @Override
-            public void focusGained(FocusEvent e) {
-                if (searchField.getText().equals(placeholder)) {
-                    searchField.setText("");
-                    searchField.setForeground(Color.WHITE);
-                }
-                searchPanel.setBorder(BorderFactory.createCompoundBorder(
-                        BorderFactory.createLineBorder(new Color(70, 130, 180), 2),
-                        BorderFactory.createEmptyBorder(2, 7, 2, 7)
-                ));
-            }
-
-            @Override
-            public void focusLost(FocusEvent e) {
-                if (searchField.getText().isEmpty()) {
-                    searchField.setForeground(Color.LIGHT_GRAY);
-                    searchField.setText(placeholder);
-                }
-                searchPanel.setBorder(BorderFactory.createCompoundBorder(
-                        BorderFactory.createLineBorder(new Color(80, 83, 85), 1),
-                        BorderFactory.createEmptyBorder(3, 8, 3, 8)
-                ));
-            }
-        });
+        searchField.setPreferredSize(new Dimension(180, 22));
 
         searchField.getDocument().addDocumentListener(new DocumentListener() {
             public void insertUpdate(DocumentEvent e) { filterEndpoints(searchField.getText()); }
@@ -644,8 +589,6 @@ public class MainTab {
             public void changedUpdate(DocumentEvent e) { filterEndpoints(searchField.getText()); }
 
             private void filterEndpoints(String searchText) {
-                if (searchText.equals(placeholder)) return;
-
                 javax.swing.text.Highlighter highlighter = endpointsTextArea.getHighlighter();
                 highlighter.removeAllHighlights();
 
@@ -667,8 +610,8 @@ public class MainTab {
             }
         });
 
-        searchPanel.add(searchIcon, BorderLayout.WEST);
-        searchPanel.add(searchField, BorderLayout.CENTER);
+        searchPanel.add(searchIcon);
+        searchPanel.add(searchField);
 
         return searchPanel;
     }
