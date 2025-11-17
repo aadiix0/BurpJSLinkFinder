@@ -226,68 +226,44 @@ public class MainTab {
 
         statusColumn.setCellRenderer(new DefaultTableCellRenderer() {
             @Override
-            public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
+            public Component getTableCellRendererComponent(
+                    JTable table, Object value, boolean isSelected,
+                    boolean hasFocus, int row, int column) {
+
                 super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
 
+                String status = value != null ? value.toString() : "New";
+                setText(status);
                 setHorizontalAlignment(CENTER);
                 setFont(new Font("Arial", Font.BOLD, 11));
 
-                int modelRow = table.convertRowIndexToModel(row);
-                TableRow tableRow = jsFileTableModel.getRowData(modelRow);
-
-                String status;
-                if (tableRow != null && tableRow.isParent()) {
-                    status = tableRow.getStatus();
-                } else {
-                    TableRow parentRow = findParentRow(modelRow);
-                    status = parentRow != null ? parentRow.getStatus() : "New";
-                }
-
-                setText(status);
-
                 if (!isSelected) {
-                    applyStatusColor(status);
+                    // Keep colored backgrounds for status
+                    switch (status) {
+                        case "New":
+                            setBackground(new Color(173, 216, 230)); // Light blue
+                            setForeground(Color.BLUE);
+                            break;
+                        case "Working":
+                            setBackground(new Color(255, 255, 102)); // Yellow
+                            setForeground(new Color(139, 69, 19));
+                            break;
+                        case "Later":
+                            setBackground(new Color(255, 102, 102)); // Red
+                            setForeground(new Color(139, 0, 0));
+                            break;
+                        case "Ignore":
+                            setBackground(Color.LIGHT_GRAY);
+                            setForeground(Color.DARK_GRAY);
+                            break;
+                        case "Done":
+                            setBackground(new Color(144, 238, 144)); // Light green
+                            setForeground(new Color(0, 100, 0));
+                            break;
+                    }
                 }
 
                 return this;
-            }
-
-            private TableRow findParentRow(int childRowIndex) {
-                for (int i = childRowIndex - 1; i >= 0; i--) {
-                    TableRow row = jsFileTableModel.getRowData(i);
-                    if (row != null && row.isParent()) {
-                        return row;
-                    }
-                }
-                return null;
-            }
-
-            private void applyStatusColor(String status) {
-                switch (status) {
-                    case "New":
-                        setBackground(new Color(173, 216, 230)); // Light blue
-                        setForeground(Color.BLUE);
-                        break;
-                    case "Working":
-                        setBackground(new Color(255, 255, 102)); // Yellow
-                        setForeground(new Color(139, 69, 19));
-                        break;
-                    case "Later":
-                        setBackground(new Color(255, 102, 102)); // Red
-                        setForeground(new Color(139, 0, 0));
-                        break;
-                    case "Ignore":
-                        setBackground(Color.LIGHT_GRAY);
-                        setForeground(Color.DARK_GRAY);
-                        break;
-                    case "Done":
-                        setBackground(new Color(144, 238, 144)); // Light green
-                        setForeground(new Color(0, 100, 0));
-                        break;
-                    default:
-                        setBackground(Color.WHITE);
-                        setForeground(Color.BLACK);
-                }
             }
         });
 
