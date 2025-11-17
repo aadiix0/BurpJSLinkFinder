@@ -188,30 +188,25 @@ public class MainTab {
                         JTable table, Object value, boolean isSelected,
                         boolean hasFocus, int row, int column) {
 
-                    super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+                    // Call super - this gives us the default alternating backgrounds
+                    Component c = super.getTableCellRendererComponent(
+                        table, value, isSelected, hasFocus, row, column);
 
-                    // DO NOT set background colors - let table handle it
-                    // Remove: setBackground(Color.WHITE) or any color
-
-                    // Only set foreground (text color)
-                    if (!isSelected) {
-                        setForeground(Color.BLACK);
-                    }
+                    // DO NOT call setBackground() here!
+                    // The super call already set alternating colors
 
                     int modelRow = table.convertRowIndexToModel(row);
                     TableRow tableRow = jsFileTableModel.getRowData(modelRow);
 
                     if (tableRow != null && tableRow.isParent()) {
-                        // Parent row - bold
-                        setFont(new Font(getFont().getName(), Font.BOLD, 12));
-                        setText(value.toString());
+                        c.setFont(new Font(c.getFont().getName(), Font.BOLD, 12));
+                        ((JLabel) c).setText(value.toString());
                     } else {
-                        // Child row - normal, indented
-                        setFont(new Font(getFont().getName(), Font.PLAIN, 12));
-                        setText("    " + value);
+                        c.setFont(new Font(c.getFont().getName(), Font.PLAIN, 12));
+                        ((JLabel) c).setText("    " + value);
                     }
 
-                    return this;
+                    return c;
                 }
             }
         );
