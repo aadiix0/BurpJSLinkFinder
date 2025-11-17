@@ -83,10 +83,10 @@ public class MainTab {
         toolbarPanel.setBackground(new Color(245, 245, 245));
         toolbarPanel.setBorder(BorderFactory.createEmptyBorder(3, 3, 3, 3));
 
-        // LEFT: Search box
+        // CENTER: Search box
         JPanel searchPanel = createLeftSearchPanel();
 
-        // RIGHT: Refresh button
+        // EAST: Refresh button
         JButton refreshButton = new JButton("⟳");
         refreshButton.setToolTipText("Refresh all JS files");
         refreshButton.setFont(new Font("Arial", Font.BOLD, 14));
@@ -111,13 +111,14 @@ public class MainTab {
             }).start();
         });
 
-        toolbarPanel.add(searchPanel, BorderLayout.WEST);
+        toolbarPanel.add(searchPanel, BorderLayout.CENTER);
         toolbarPanel.add(refreshButton, BorderLayout.EAST);
 
         // Table
-        leftPanel.add(toolbarPanel, BorderLayout.NORTH);
         jsFileTable = new JTable(jsFileTableModel);
+        leftPanel.add(toolbarPanel, BorderLayout.NORTH);
         leftPanel.add(new JScrollPane(jsFileTable), BorderLayout.CENTER);
+
         TableRowSorter<TableModel> sorter = new TableRowSorter<>(jsFileTableModel);
         jsFileTable.setRowSorter(sorter);
 
@@ -519,100 +520,93 @@ public class MainTab {
     }
 
     private JPanel createLeftSearchPanel() {
-        JPanel searchPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
-        searchPanel.setBackground(new Color(245, 245, 245));  // Light gray
-        searchPanel.setBorder(BorderFactory.createEmptyBorder(2, 3, 2, 3));
-
-        // Search icon
-        JLabel searchIcon = new JLabel("🔍");
-        searchIcon.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 12));
-
-        // Compact search field
-        JTextField searchField = new JTextField(15);  // Width: 15 chars
-        searchField.setFont(new Font("Arial", Font.PLAIN, 11));
-        searchField.setBorder(BorderFactory.createCompoundBorder(
+        JPanel searchPanel = new JPanel(new BorderLayout());
+        searchPanel.setBackground(Color.WHITE);
+        searchPanel.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createLineBorder(new Color(180, 180, 180), 1),
                 BorderFactory.createEmptyBorder(2, 5, 2, 5)
         ));
+
+        JLabel searchIcon = new JLabel("🔍");
+        searchIcon.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 12));
+        searchIcon.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 5));
+
+        JTextField searchField = new JTextField(15);
+        searchField.setFont(new Font("Arial", Font.PLAIN, 11));
+        searchField.setBorder(null);
         searchField.setBackground(Color.WHITE);
-        searchField.setPreferredSize(new Dimension(150, 22));  // Compact height
 
-        // Search logic
         searchField.getDocument().addDocumentListener(new DocumentListener() {
-            public void insertUpdate(DocumentEvent e) { filterTable(); }
-            public void removeUpdate(DocumentEvent e) { filterTable(); }
-            public void changedUpdate(DocumentEvent e) { filterTable(); }
-
-            private void filterTable() {
-                String text = searchField.getText();
-                if (text.isEmpty()) {
-                    ((TableRowSorter) jsFileTable.getRowSorter()).setRowFilter(null);
-                } else {
-                    ((TableRowSorter) jsFileTable.getRowSorter()).setRowFilter(
-                            RowFilter.regexFilter("(?i)" + text)
-                    );
-                }
-            }
+            public void insertUpdate(DocumentEvent e) { filterTable(searchField.getText()); }
+            public void removeUpdate(DocumentEvent e) { filterTable(searchField.getText()); }
+            public void changedUpdate(DocumentEvent e) { filterTable(searchField.getText()); }
         });
 
-        searchPanel.add(searchIcon);
-        searchPanel.add(searchField);
+        searchPanel.add(searchIcon, BorderLayout.WEST);
+        searchPanel.add(searchField, BorderLayout.CENTER);
 
         return searchPanel;
     }
 
+    private void filterTable(String text) {
+        if (text.isEmpty()) {
+            ((TableRowSorter) jsFileTable.getRowSorter()).setRowFilter(null);
+        } else {
+            ((TableRowSorter) jsFileTable.getRowSorter()).setRowFilter(
+                    RowFilter.regexFilter("(?i)" + text)
+            );
+        }
+    }
+
     private JPanel createRightSearchPanel() {
-        JPanel searchPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
-        searchPanel.setBackground(new Color(50, 53, 55));  // Dark gray
-        searchPanel.setBorder(BorderFactory.createEmptyBorder(2, 3, 2, 3));
-
-        // Search icon
-        JLabel searchIcon = new JLabel("🔍");
-        searchIcon.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 12));
-        searchIcon.setForeground(Color.LIGHT_GRAY);
-
-        // Compact search field
-        JTextField searchField = new JTextField(20);
-        searchField.setFont(new Font("Consolas", Font.PLAIN, 11));
-        searchField.setBorder(BorderFactory.createCompoundBorder(
+        JPanel searchPanel = new JPanel(new BorderLayout());
+        searchPanel.setBackground(new Color(60, 63, 65));
+        searchPanel.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createLineBorder(new Color(80, 83, 85), 1),
                 BorderFactory.createEmptyBorder(2, 5, 2, 5)
         ));
+
+        JLabel searchIcon = new JLabel("🔍");
+        searchIcon.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 12));
+        searchIcon.setForeground(Color.LIGHT_GRAY);
+        searchIcon.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 5));
+
+        JTextField searchField = new JTextField(20);
+        searchField.setFont(new Font("Consolas", Font.PLAIN, 11));
+        searchField.setBorder(null);
         searchField.setBackground(new Color(60, 63, 65));
         searchField.setForeground(Color.LIGHT_GRAY);
         searchField.setCaretColor(Color.WHITE);
-        searchField.setPreferredSize(new Dimension(180, 22));
 
         searchField.getDocument().addDocumentListener(new DocumentListener() {
             public void insertUpdate(DocumentEvent e) { filterEndpoints(searchField.getText()); }
             public void removeUpdate(DocumentEvent e) { filterEndpoints(searchField.getText()); }
             public void changedUpdate(DocumentEvent e) { filterEndpoints(searchField.getText()); }
-
-            private void filterEndpoints(String searchText) {
-                javax.swing.text.Highlighter highlighter = endpointsTextArea.getHighlighter();
-                highlighter.removeAllHighlights();
-
-                if (searchText.isEmpty()) {
-                    return;
-                }
-
-                String content = endpointsTextArea.getText();
-                int index = content.toLowerCase().indexOf(searchText.toLowerCase());
-                while (index >= 0) {
-                    try {
-                        highlighter.addHighlight(index, index + searchText.length(),
-                                new javax.swing.text.DefaultHighlighter.DefaultHighlightPainter(Color.YELLOW));
-                        index = content.toLowerCase().indexOf(searchText.toLowerCase(), index + 1);
-                    } catch (javax.swing.text.BadLocationException ex) {
-                        // Ignore
-                    }
-                }
-            }
         });
 
-        searchPanel.add(searchIcon);
-        searchPanel.add(searchField);
-
+        searchPanel.add(searchIcon, BorderLayout.WEST);
+        searchPanel.add(searchField, BorderLayout.CENTER);
         return searchPanel;
+    }
+
+    private void filterEndpoints(String searchText) {
+        javax.swing.text.Highlighter highlighter = endpointsTextArea.getHighlighter();
+        highlighter.removeAllHighlights();
+
+        if (searchText.isEmpty()) {
+            return;
+        }
+
+        String content = endpointsTextArea.getText();
+        int index = content.toLowerCase().indexOf(searchText.toLowerCase());
+        while (index >= 0) {
+            try {
+                highlighter.addHighlight(index, index + searchText.length(),
+                        new javax.swing.text.DefaultHighlighter.DefaultHighlightPainter(Color.YELLOW));
+                index = content.toLowerCase().indexOf(searchText.toLowerCase(), index + 1);
+            } catch (javax.swing.text.BadLocationException ex) {
+                // Ignore
+            }
+        }
     }
 }
