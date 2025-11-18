@@ -484,8 +484,10 @@ public class MainTab {
     public Component getComponent() {
         JTabbedPane tabbedPane = new JTabbedPane();
         JPanel linksPanel = createLinksPanel();
+        JSChangesTab jsChangesTab = new JSChangesTab(api, allJSFiles);
+
         tabbedPane.addTab("Links", linksPanel);
-        tabbedPane.addTab("JS Changes", createPlaceholderPanel("JS Changes - Coming Soon"));
+        tabbedPane.addTab("JS Changes", jsChangesTab.getComponent());
         tabbedPane.addTab("Blacklist", createPlaceholderPanel("Blacklist - Coming Soon"));
         tabbedPane.addTab("Settings", createPlaceholderPanel("Settings - Coming Soon"));
         return tabbedPane;
