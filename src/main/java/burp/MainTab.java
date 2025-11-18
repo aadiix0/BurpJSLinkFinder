@@ -163,8 +163,24 @@ public class MainTab {
         }).start();
     });
 
+    // Filter dropdown
+    JComboBox<String> filterCombo = new JComboBox<>(new String[]{
+        "All", "New", "Working", "Later", "Ignore", "Done"
+    });
+    filterCombo.setPreferredSize(new Dimension(90, 28));
+    filterCombo.setFont(new Font("Arial", Font.PLAIN, 11));
+    filterCombo.setBackground(Color.WHITE);
+    filterCombo.setToolTipText("Filter by status");
+
+    filterCombo.addActionListener(e -> {
+        String selected = (String) filterCombo.getSelectedItem();
+        filterTableByStatus(selected);
+    });
+
+    // Add to toolbar
     toolbarPanel.add(searchPanel);
     toolbarPanel.add(refreshButton);
+    toolbarPanel.add(filterCombo);  // NEW
 
         // Table
         jsFileTable = new JTable(jsFileTableModel);
@@ -239,56 +255,74 @@ public class MainTab {
         statusEditor.setClickCountToStart(2);
         statusColumn.setCellEditor(statusEditor);
 
-        statusColumn.setCellRenderer(new DefaultTableCellRenderer() {
-            @Override
-            public Component getTableCellRendererComponent(
-                    JTable table, Object value, boolean isSelected,
-                    boolean hasFocus, int row, int column) {
+        statusColumn.setCellRenderer(
+    new DefaultTableCellRenderer() {
+        @Override
+        public Component getTableCellRendererComponent(
+                JTable table, Object value, boolean isSelected,
+                boolean hasFocus, int row, int column) {
 
-                super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+            super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
 
-                String status = value != null ? value.toString() : "New";
-                setText(status);
-                setHorizontalAlignment(CENTER);
-                setFont(new Font("Arial", Font.BOLD, 11));
+            int modelRow = table.convertRowIndexToModel(row);
+            TableRow tableRow = jsFileTableModel.getRowData(modelRow);
 
-                // Always set colors unless the row is selected
-                if (!isSelected) {
-                    switch (status) {
-                        case "New":
-                            setBackground(new Color(173, 216, 230)); // Light blue
-                            setForeground(Color.BLUE);
-                            break;
-                        case "Working":
-                            setBackground(new Color(255, 255, 102)); // Yellow
-                            setForeground(new Color(139, 69, 19));
-                            break;
-                        case "Later":
-                            setBackground(new Color(255, 102, 102)); // Red
-                            setForeground(new Color(139, 0, 0));
-                            break;
-                        case "Ignore":
-                            setBackground(Color.LIGHT_GRAY);
-                            setForeground(Color.DARK_GRAY);
-                            break;
-                        case "Done":
-                            setBackground(new Color(144, 238, 144)); // Light green
-                            setForeground(new Color(0, 100, 0));
-                            break;
-                        default:
-                            // Default appearance if status is unexpected
-                            setBackground(table.getBackground());
-                            setForeground(table.getForeground());
-                            break;
+            String status = "New";
+
+            // Get status from parent if this is a child row
+            if (tableRow != null && !tableRow.isParent()) {
+                // Find parent status
+                for (int i = modelRow - 1; i >= 0; i--) {
+                    TableRow potentialParent = jsFileTableModel.getRowData(i);
+                    if (potentialParent != null && potentialParent.isParent()) {
+                        status = potentialParent.getStatus();
+                        break;
                     }
-                } else {
-                    // Use table's default selection colors
-                    setBackground(table.getSelectionBackground());
-                    setForeground(table.getSelectionForeground());
                 }
-                return this;
+                // Show category name for child
+                setText(value != null ? value.toString() : "");
+            } else {
+                // Parent row - use its status
+                status = value != null ? value.toString() : "New";
+                setText(status);
             }
-        });
+
+            setHorizontalAlignment(CENTER);
+            setFont(new Font("Arial", Font.BOLD, 11));
+
+            if (!isSelected) {
+                // Apply color based on status
+                switch (status) {
+                    case "New":
+                        setBackground(new Color(173, 216, 230));
+                        setForeground(Color.BLUE);
+                        break;
+                    case "Working":
+                        setBackground(new Color(255, 255, 102));
+                        setForeground(new Color(139, 69, 19));
+                        break;
+                    case "Later":
+                        setBackground(new Color(255, 102, 102));
+                        setForeground(new Color(139, 0, 0));
+                        break;
+                    case "Ignore":
+                        setBackground(Color.LIGHT_GRAY);
+                        setForeground(Color.DARK_GRAY);
+                        break;
+                    case "Done":
+                        setBackground(new Color(144, 238, 144));
+                        setForeground(new Color(0, 100, 0));
+                        break;
+                }
+            } else {
+                setBackground(table.getSelectionBackground());
+                setForeground(table.getSelectionForeground());
+            }
+
+            return this;
+        }
+    }
+);
 
         jsFileTable.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) {
@@ -333,20 +367,17 @@ public class MainTab {
                     JTable table, Object value, boolean isSelected,
                     boolean hasFocus, int row, int column) {
 
-                    super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
-
-                    // Use DEFAULT table background (no color override)
-                    if (!isSelected) {
-                        // By not setting the background, the table's alternating row stripes will apply automatically.
-                    } else {
-                        // Use default selection colors
-                        setBackground(table.getSelectionBackground());
-                        setForeground(table.getSelectionForeground());
-                    }
-
                     int modelRow = table.convertRowIndexToModel(row);
                     TableRow tableRow = jsFileTableModel.getRowData(modelRow);
 
+                    // For rendering purposes, pretend child rows are never selected.
+                    // This removes the blue selection highlight while preserving the
+                    // underlying alternating row stripe color.
+                    boolean isRowSelected = isSelected && (tableRow != null && tableRow.isParent());
+
+                    super.getTableCellRendererComponent(table, value, isRowSelected, hasFocus, row, column);
+
+                    // Now, apply font and text styling without touching the background color.
                     if (tableRow != null) {
                         if (tableRow.isParent()) {
                             setFont(new Font(getFont().getName(), Font.BOLD, 12));
@@ -619,6 +650,40 @@ public class MainTab {
             );
         }
     }
+
+private void filterTableByStatus(String status) {
+    TableRowSorter<TableModel> sorter =
+        (TableRowSorter<TableModel>) jsFileTable.getRowSorter();
+
+    if (status.equals("All")) {
+        sorter.setRowFilter(null);
+    } else {
+        sorter.setRowFilter(new RowFilter<TableModel, Integer>() {
+            @Override
+            public boolean include(Entry<? extends TableModel, ? extends Integer> entry) {
+                int rowIndex = entry.getIdentifier();
+                TableRow row = jsFileTableModel.getRowData(rowIndex);
+
+                if (row == null) return false;
+
+                // Show parent if it matches filter
+                if (row.isParent()) {
+                    return row.getStatus().equals(status);
+                }
+
+                // Show child if parent matches filter
+                for (int i = rowIndex - 1; i >= 0; i--) {
+                    TableRow parentRow = jsFileTableModel.getRowData(i);
+                    if (parentRow != null && parentRow.isParent()) {
+                        return parentRow.getStatus().equals(status);
+                    }
+                }
+
+                return false;
+            }
+        });
+    }
+}
 
     private JPanel createRightSearchPanel() {
         JPanel searchPanel = new JPanel(new BorderLayout());
