@@ -78,72 +78,93 @@ public class MainTab {
     private void initializeLeftPanel() {
         JPanel leftPanel = new JPanel(new BorderLayout());
 
-        // TOP TOOLBAR - Use FlowLayout to prevent expansion
-        JPanel toolbarPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 3));
-        toolbarPanel.setBackground(new Color(240, 240, 240));
+    // Toolbar
+    JPanel toolbarPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 3));
+    toolbarPanel.setBackground(new Color(240, 240, 240));
 
-        // Search panel - FIXED SIZE
-        JPanel searchWrapper = new JPanel(new BorderLayout());
-        searchWrapper.setBackground(new Color(240, 240, 240));
-        searchWrapper.setPreferredSize(new Dimension(200, 28));  // FIXED width
-        searchWrapper.setMaximumSize(new Dimension(200, 28));    // Prevent expansion
-        searchWrapper.setMinimumSize(new Dimension(200, 28));    // Minimum size
+    // Search panel - GRAY with icon inside
+    JPanel searchPanel = new JPanel(new BorderLayout());
+    searchPanel.setBackground(new Color(240, 240, 240));
+    searchPanel.setPreferredSize(new Dimension(200, 28));
+    searchPanel.setBorder(BorderFactory.createCompoundBorder(
+        BorderFactory.createLineBorder(Color.LIGHT_GRAY, 1),
+        BorderFactory.createEmptyBorder(2, 5, 2, 5)
+    ));
 
-        JLabel searchIcon = new JLabel("🔍 ");
-        JTextField searchField = new JTextField();
-        searchField.setPreferredSize(new Dimension(170, 24));
-        searchField.setMaximumSize(new Dimension(170, 24));
-        searchField.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(Color.LIGHT_GRAY, 1),
-            BorderFactory.createEmptyBorder(2, 5, 2, 5)
-        ));
+    JTextField searchField = new JTextField("  🔍 Search...");
+    searchField.setForeground(Color.GRAY);
+    searchField.setBackground(new Color(240, 240, 240));  // STAY GRAY
+    searchField.setOpaque(true);
+    searchField.setBorder(null);
+    searchField.setFont(new Font("Arial", Font.PLAIN, 11));
 
-        // Search logic
-        searchField.getDocument().addDocumentListener(new DocumentListener() {
-            public void insertUpdate(DocumentEvent e) { filter(); }
-            public void removeUpdate(DocumentEvent e) { filter(); }
-            public void changedUpdate(DocumentEvent e) { filter(); }
-
-            private void filter() {
-                String text = searchField.getText();
-                TableRowSorter<TableModel> sorter = (TableRowSorter<TableModel>) jsFileTable.getRowSorter();
-                if (text.isEmpty()) {
-                    sorter.setRowFilter(null);
-                } else {
-                    sorter.setRowFilter(RowFilter.regexFilter("(?i)" + text));
-                }
+    searchField.addFocusListener(new FocusAdapter() {
+        @Override
+        public void focusGained(FocusEvent e) {
+            if (searchField.getText().equals("  🔍 Search...")) {
+                searchField.setText("");
+                searchField.setForeground(Color.BLACK);
             }
-        });
+        }
 
-        searchWrapper.add(searchIcon, BorderLayout.WEST);
-        searchWrapper.add(searchField, BorderLayout.CENTER);
+        @Override
+        public void focusLost(FocusEvent e) {
+            if (searchField.getText().isEmpty()) {
+                searchField.setText("  🔍 Search...");
+                searchField.setForeground(Color.GRAY);
+            }
+        }
+    });
 
-        // Refresh button - FIXED SIZE
-        JButton refreshButton = new JButton("⟳");
-        refreshButton.setPreferredSize(new Dimension(32, 28));
-        refreshButton.setMaximumSize(new Dimension(32, 28));
-        refreshButton.setMinimumSize(new Dimension(32, 28));
-        refreshButton.setToolTipText("Refresh all JS files");
-        refreshButton.setFocusPainted(false);
-        refreshButton.setBackground(new Color(70, 130, 180));
-        refreshButton.setForeground(Color.WHITE);
-        refreshButton.setCursor(new Cursor(Cursor.HAND_CURSOR));
+    // Search logic (unchanged)
+    searchField.getDocument().addDocumentListener(new DocumentListener() {
+        public void insertUpdate(DocumentEvent e) { filter(); }
+        public void removeUpdate(DocumentEvent e) { filter(); }
+        public void changedUpdate(DocumentEvent e) { filter(); }
 
-        refreshButton.addActionListener(e -> {
-            refreshButton.setEnabled(false);
-            refreshButton.setText("⏳");
-            new Thread(() -> {
-                jsFileRefresher.refreshAllJSFiles();
-                SwingUtilities.invokeLater(() -> {
-                    refreshButton.setEnabled(true);
-                    refreshButton.setText("⟳");
-                });
-            }).start();
-        });
+        private void filter() {
+            String text = searchField.getText();
+            if (text.equals("  🔍 Search...")) return;
 
-        // Add to toolbar with FlowLayout (prevents expansion)
-        toolbarPanel.add(searchWrapper);
-        toolbarPanel.add(refreshButton);
+            TableRowSorter<TableModel> sorter =
+                (TableRowSorter<TableModel>) jsFileTable.getRowSorter();
+            if (text.isEmpty()) {
+                sorter.setRowFilter(null);
+            } else {
+                sorter.setRowFilter(RowFilter.regexFilter("(?i)" + text));
+            }
+        }
+    });
+
+    searchPanel.add(searchField, BorderLayout.CENTER);
+
+    // Refresh button - with text
+    JButton refreshButton = new JButton("⟳ Refresh");  // ADDED TEXT
+    refreshButton.setPreferredSize(new Dimension(90, 28));  // Wider for text
+    refreshButton.setFont(new Font("Arial", Font.BOLD, 11));
+    refreshButton.setFocusPainted(false);
+    refreshButton.setBackground(new Color(70, 130, 180));
+    refreshButton.setForeground(Color.WHITE);
+    refreshButton.setBorder(BorderFactory.createLineBorder(
+        new Color(50, 100, 150), 1
+    ));
+    refreshButton.setCursor(new Cursor(Cursor.HAND_CURSOR));
+    refreshButton.setToolTipText("Re-scan all JS files");
+
+    refreshButton.addActionListener(e -> {
+        refreshButton.setEnabled(false);
+        refreshButton.setText("⏳");
+        new Thread(() -> {
+            jsFileRefresher.refreshAllJSFiles();
+            SwingUtilities.invokeLater(() -> {
+                refreshButton.setEnabled(true);
+                refreshButton.setText("⟳ Refresh");
+            });
+        }).start();
+    });
+
+    toolbarPanel.add(searchPanel);
+    toolbarPanel.add(refreshButton);
 
         // Table
         jsFileTable = new JTable(jsFileTableModel);
