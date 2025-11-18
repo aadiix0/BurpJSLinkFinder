@@ -1,45 +1,58 @@
 package burp;
 
+import java.io.Serializable;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
-import java.security.MessageDigest;
-import java.math.BigInteger;
 
-public class JSFileSnapshot {
+public class JSFileSnapshot implements Serializable {
+    private static final long serialVersionUID = 1L;
+
     private String jsFileUrl;
     private String content;
     private List<String> endpoints;
     private LocalDateTime timestamp;
-    private String hash;  // MD5 hash for quick change detection
+    private String hash;
+    private int version;  // Version number for timeline
 
-    public JSFileSnapshot(String jsFileUrl, String content, List<String> endpoints) {
+    public JSFileSnapshot(String jsFileUrl, String content, List<String> endpoints, int version) {
         this.jsFileUrl = jsFileUrl;
         this.content = content;
-        this.endpoints = endpoints;
+        this.endpoints = new ArrayList<>(endpoints);
         this.timestamp = LocalDateTime.now();
         this.hash = computeHash(content);
+        this.version = version;
     }
 
     private String computeHash(String content) {
         try {
-            MessageDigest md = MessageDigest.getInstance("MD5");
-            byte[] messageDigest = md.digest(content.getBytes());
-            BigInteger no = new BigInteger(1, messageDigest);
-            String hashtext = no.toString(16);
-            while (hashtext.length() < 32) {
-                hashtext = "0" + hashtext;
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("MD5");
+            byte[] hashBytes = md.digest(content.getBytes());
+            StringBuilder sb = new StringBuilder();
+            for (byte b : hashBytes) {
+                sb.append(String.format("%02x", b));
             }
-            return hashtext;
+            return sb.toString();
         } catch (Exception e) {
-            // Fallback to a simple hashCode if MD5 fails
             return String.valueOf(content.hashCode());
         }
+    }
+
+    public String getFormattedTimestamp() {
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        return timestamp.format(formatter);
+    }
+
+    public boolean hasChanged(JSFileSnapshot other) {
+        return !this.hash.equals(other.hash);
     }
 
     // Getters
     public String getJsFileUrl() { return jsFileUrl; }
     public String getContent() { return content; }
-    public List<String> getEndpoints() { return endpoints; }
+    public List<String> getEndpoints() { return new ArrayList<>(endpoints); }
     public LocalDateTime getTimestamp() { return timestamp; }
     public String getHash() { return hash; }
+    public int getVersion() { return version; }
 }
