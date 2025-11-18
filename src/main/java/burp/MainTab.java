@@ -316,8 +316,7 @@ public class MainTab {
 
                     // Use DEFAULT table background (no color override)
                     if (!isSelected) {
-                        setBackground(null); // Use table's default background
-                        setForeground(new Color(80, 80, 80));
+                        // By not setting the background, the table's alternating row stripes will apply automatically.
                     } else {
                         // Use default selection colors
                         setBackground(table.getSelectionBackground());
